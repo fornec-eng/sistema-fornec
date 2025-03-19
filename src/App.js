@@ -1,24 +1,21 @@
 import 'bootstrap/dist/css/bootstrap.min.css';
-import { Col, Container, Row } from 'react-bootstrap';
 import './App.css';
 import Menu from './components/menu';
-import Home from './pages/home';
+import { BrowserRouter as Router } from 'react-router-dom';
+import Routers from './routes/Routers';
+import { AuthProvider } from './routes/AuthContext';
+
 
 function App() {
   return (
-    
-    <div className="App">
-      <Menu />
-      <Container>
-        <Row>
-          <Col>
-            <Home />
-            <br/>
-          </Col>
-        </Row>
-      </Container>
-      
-    </div>
+    <AuthProvider>
+      <div className="App">
+        <Router>
+          <Menu />
+          <Routers />
+        </Router>
+      </div>
+    </AuthProvider>
   );
 }
 
