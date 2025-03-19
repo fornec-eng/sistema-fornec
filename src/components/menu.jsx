@@ -1,97 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Container, Nav, Navbar, Offcanvas, Button } from 'react-bootstrap';
-import { NavLink, useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
-import ApiBase from '../services/ApiBase';
 import logo_mini from '../images/logo_min_fornec.svg';
-
-/* 
-  Estilizamos o NavLink para mudar o fundo e a cor do texto 
-  quando estiver ativo (rota atual).
-*/
-const StyledNavLink = styled(NavLink)`
-  display: block;
-  color: #000000;
-  text-decoration: none;
-  padding: 0.5rem;
-  margin: 0.25rem 0;
-  border-radius: 8px;
-  transition: background-color 0.2s ease;
-
-  &.active {
-    background-color: #FFC107;
-    color: #000 !important; /* sobrescreve a cor do texto para preto */
-    border: 1px solid #ddd;
-  }
-`;
-
-const Badge = styled.span`
-  background-color: red;
-  color: #fff;
-  border-radius: 50%;
-  padding: 2px 6px;
-  font-size: 0.8rem;
-  margin-left: 8px;
-`;
+import { useNavigate } from 'react-router-dom';
 
 const Menu = () => {
   const navigate = useNavigate();
 
-  // Lê o e-mail e a role do storage
+  // Tenta pegar do localStorage primeiro; se não existir, pega do sessionStorage
   const storedEmail = localStorage.getItem('email') || sessionStorage.getItem('email');
-  const storedRole = localStorage.getItem('_role') || sessionStorage.getItem('_role');
 
-  // Controla a abertura do Offcanvas
-  const [showOffcanvas, setShowOffcanvas] = useState(false);
-  const handleOpenOffcanvas = () => setShowOffcanvas(true);
-  const handleCloseOffcanvas = () => setShowOffcanvas(false);
-
-  // Quantidade de usuários pendentes (só importa para Admin)
-  const [pendingCount, setPendingCount] = useState(0);
-
-  // Se for Admin, busca quantos usuários precisam de aprovação
-  useEffect(() => {
-    if (storedRole === 'Admin') {
-      ApiBase.get('/list')
-        .then((res) => {
-          // Supondo que retorne { users: [...] }
-          const users = res.data.users;
-          const pending = users.filter((user) => user.role === 'PreAprovacao');
-          setPendingCount(pending.length);
-        })
-        .catch((err) => console.error('Erro ao buscar pendências:', err));
-    }
-  }, [storedRole]);
-
-  // Função de logout
   const handleLogout = () => {
-    localStorage.clear();
-    sessionStorage.clear();
+    // Remove credenciais do localStorage
+    localStorage.removeItem('_id');
+    localStorage.removeItem('token');
+    localStorage.removeItem('_role');
+    localStorage.removeItem('email');
+
+    // Remove credenciais do sessionStorage
+    sessionStorage.removeItem('_id');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('_role');
+    sessionStorage.removeItem('email');
+
+    // Redireciona para a página de login
     navigate('/login');
   };
 
-  // Se NÃO estiver logado, renderiza apenas o brand
-  if (!storedEmail) {
-    return (
-      <Navbar bg="dark" variant="dark" className="mb-3">
-        <Container fluid>
-          <Navbar.Brand href="/">
-            <img
-              alt="Logo Fornec"
-              src={logo_mini}
-              width="30"
-              height="30"
-              className="d-inline-block align-top"
-            />{' '}
-            Fornec Engenharia
-          </Navbar.Brand>
-        </Container>
-      </Navbar>
-    );
-  }
-
   return (
-    <Navbar bg="dark" variant="dark" expand="false" className="mb-3">
+    <Navbar
+      key="lg"
+      expand="lg"             // <= Ajuste o breakpoint aqui se quiser que o Offcanvas apareça em telas maiores
+      bg="dark"
+      data-bs-theme="dark"
+      variant="dark"
+      className="mb-3"
+    >
       <Container fluid>
         <Navbar.Brand href="/home">
           <img
@@ -104,62 +47,37 @@ const Menu = () => {
           Fornec Engenharia
         </Navbar.Brand>
 
-        {/* Botão que abre o Offcanvas */}
-        <Navbar.Toggle aria-controls="offcanvasNavbar" onClick={handleOpenOffcanvas} />
+        {/* Botão que aparece em telas menores para abrir o Offcanvas */}
+        <Navbar.Toggle aria-controls="offcanvasNavbar-expand-lg" />
 
         <Navbar.Offcanvas
-          id="offcanvasNavbar"
-          aria-labelledby="offcanvasNavbarLabel"
+          id="offcanvasNavbar-expand-lg"
+          aria-labelledby="offcanvasNavbarLabel-expand-lg"
           placement="end"
-          show={showOffcanvas}
-          onHide={handleCloseOffcanvas}
-          style={{ width: '75%' }}
         >
           <Offcanvas.Header closeButton>
-            <Offcanvas.Title id="offcanvasNavbarLabel">
-              Menu
+            <Offcanvas.Title id="offcanvasNavbarLabel-expand-lg">
+              Obra UTI Santa Lúcia
             </Offcanvas.Title>
           </Offcanvas.Header>
 
-          {/*
-            d-flex flex-column justify-content-between
-            para que o bloco de links fique no topo
-            e o bloco de usuário/logout fique embaixo
-          */}
-          <Offcanvas.Body className="d-flex flex-column justify-content-between">
-            <Nav className="flex-column">
-              {/* Links comuns a todos os usuários */}
-              <StyledNavLink to="/home" onClick={handleCloseOffcanvas}>
-                Início
-              </StyledNavLink>
-              <StyledNavLink to="/obras_ativas" onClick={handleCloseOffcanvas}>
-                Obras Ativas
-              </StyledNavLink>
-              <StyledNavLink to="/inventario" onClick={handleCloseOffcanvas}>
-                Inventário
-              </StyledNavLink>
+          <Offcanvas.Body>
+            {/*
+              'ms-auto' faz o conteúdo da Nav alinhar à direita.
+              'd-flex align-items-center' alinha tudo verticalmente ao centro.
+            */}
+            <Nav className="ms-auto d-flex align-items-center">
+              <Nav.Link href="/home">Resumo</Nav.Link>
+              <Nav.Link href="/cronograma">Inventário</Nav.Link>
 
-              {/* Links exclusivos de Admin */}
-              {storedRole === 'Admin' && (
-                <>
-                  <StyledNavLink to="/pagamento_semanal" onClick={handleCloseOffcanvas}>
-                    Pagamento Semanal
-                  </StyledNavLink>
-                  <StyledNavLink to="/financeiro" onClick={handleCloseOffcanvas}>
-                    Financeiro
-                  </StyledNavLink>
-                  <StyledNavLink to="/usuarios" onClick={handleCloseOffcanvas}>
-                    Gerenciar Usuários
-                    {pendingCount > 0 && <Badge>{pendingCount}</Badge>}
-                  </StyledNavLink>
-                </>
+              {/* Se existir usuário logado, exibe o email */}
+              {storedEmail && (
+                <Navbar.Text className="ms-3">
+                  Logado como: <strong>{storedEmail}</strong>
+                </Navbar.Text>
               )}
-            </Nav>
 
-            <div className="d-flex flex-column align-items-start mt-3">
-              <Navbar.Text className="ms-3 mb-2">
-                Usuário: <strong>{storedEmail}</strong>
-              </Navbar.Text>
+              {/* Botão de Logout */}
               <Button
                 variant="outline-danger"
                 size="sm"
@@ -168,7 +86,7 @@ const Menu = () => {
               >
                 Logout
               </Button>
-            </div>
+            </Nav>
           </Offcanvas.Body>
         </Navbar.Offcanvas>
       </Container>

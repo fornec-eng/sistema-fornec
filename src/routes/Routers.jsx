@@ -1,39 +1,48 @@
-import { Route, Routes } from "react-router-dom"
-import PrivateRoute from "../routes/PrivateRoute"
+import React from "react";
+import { Route, Routes } from "react-router-dom";
+import PrivateRoute from '../routes/PrivateRoute'
 
-// Pages
-import Login from "../pages/login"
-import Home from "../pages/home"
-import Cadastro from "../pages/cadastro"
-import Financeiro from "../pages/financeiro"
-import Inventario from "../pages/inventario"
-import Usuarios from "../pages/usuarios"
-import Pagamento_semanal from "../pages/pagamento_semanal"
-import ObrasAtivas from "../pages/obras_ativas"
-import AdicionarPagamentos from "../pages/adicionar-pagamentos"
-import ObraDashboard from "../pages/obra-dashboard"
+
+//pages
+
+import Login from "../pages/login";
+import Home from "../pages/home";
+import Cadastro from "../pages/cadastro";
+import Cards from "../components/Cards";
+import Financeiro from "../pages/financeiro";
+import Inventario from "../pages/inventario";
+import Usuarios from "../pages/usuarios";
+import Pagamento_semanal from "../pages/pagamento_semanal";
 
 const Routers = () => {
   return (
-    <Routes>
-      {/* Rotas Públicas */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/cadastro" element={<Cadastro />} />
+    <>
+        <Routes>
+            <Route path="/" element={<PrivateRoute />} >
+                <Route path="/" element={<Home />} />
+            </Route>
+            <Route path="/home" element={<PrivateRoute />} >
+                <Route path="/home" element={<Home />} />
+            </Route> 
+            <Route path="/obra" element={<PrivateRoute />} >
+                <Route path="/obra" element={<Cards />} />
+            </Route>
+            <Route path="/financeiro" element={<PrivateRoute />} >
+                <Route path="/financeiro" element={<Financeiro />} />
+            </Route>
+            <Route path="/usuarios" element={<PrivateRoute />} >
+                <Route path="/usuarios" element={<Usuarios />} />
+            </Route>  
+            <Route path="/pagamento_semanal" element={<PrivateRoute />} >
+                <Route path="/pagamento_semanal" element={<Pagamento_semanal />} />
+            </Route>        
 
-      {/* Rotas Privadas */}
-      <Route path="/" element={<PrivateRoute />}>
-        <Route index element={<Home />} />
-        <Route path="home" element={<Home />} />
-        <Route path="obras_ativas" element={<ObrasAtivas />} />
-        <Route path="obras/:id" element={<ObraDashboard />} /> {/* Rota atualizada */}
-        <Route path="financeiro" element={<Financeiro />} />
-        <Route path="usuarios" element={<Usuarios />} />
-        <Route path="pagamento_semanal" element={<Pagamento_semanal />} />
-        <Route path="adicionar-pagamentos" element={<AdicionarPagamentos />} />
-        <Route path="inventario" element={<Inventario />} />
-      </Route>
-    </Routes>
-  )
-}
+            <Route path="/inventario" element={<Inventario />} />   
+            <Route path="/login" element={<Login />} />
+            <Route path="/cadastro" element={<Cadastro />} />
+        </Routes>
+    </>
+  );
+};
 
-export default Routers
+export default Routers;

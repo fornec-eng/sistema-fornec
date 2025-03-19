@@ -139,19 +139,7 @@ const Usuarios = () => {
     >
       <Row>
         <Col>
-          <div className="d-flex justify-content-between align-items-center mb-5">
-            <h1
-              style={{
-                fontSize: '2rem', 
-                fontFamily: 'Rawline',
-                fontWeight: '600',
-                textAlign: 'center',
-                width: '100%'
-              }}
-            >
-            Gerenciamento de Usuários</h1>
-          </div>
-
+          <h1 className="text-center mb-4">Gerenciamento de Usuários</h1>
         </Col>
       </Row>
 
