@@ -1,377 +1,123 @@
-"use client"
+import React, { useState, useEffect } from 'react';
+import { Card, Button, Modal, Form, Row, Col, Container } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
+import ApiBase from '../services/ApiBase';
 
-import { useState, useEffect, useCallback } from "react"
-import { Card, Button, Modal, Row, Col, Container, Spinner, Alert, Badge, Dropdown } from "react-bootstrap"
-import { Link } from "react-router-dom"
-import { Plus, Building, Eye, Database, ExternalLink, MoreVertical, Trash2 } from "lucide-react"
-import apiService from "../services/apiService"
-import ObraForm from "../components/forms/ObraForm"
-import GastosResumo from "../components/GastosResumo"
-import GoogleSheetsService from "../services/GoogleSheetsService"
+const Obras_ativas = () => {
+  const [obras, setObras] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [newObraName, setNewObraName] = useState('');
 
-const ObrasAtivas = () => {
-  const [obras, setObras] = useState([])
-  const [obrasComGastos, setObrasComGastos] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [showModal, setShowModal] = useState(false)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [obraToDelete, setObraToDelete] = useState(null)
-  const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
-
-  const showAlert = (message, variant = "success", duration = 5000) => {
-    setAlert({ show: true, message, variant })
-    setTimeout(() => setAlert({ show: false, message: "", variant: "" }), duration)
-  }
-
-  const fetchObras = useCallback(async () => {
-    setLoading(true)
+  // Substitua 'YOUR_FOLDER_ID' pelo ID da sua pasta onde estão as planilhas
+  const folderId = '1ALOCpJyPNQe51HC0TSNX68oa8SIkZqcW';
+  const templateId = '1tnLeEwbrDgpE8p26zcUe3fhWpmmKnxifyiymxgsX8aU';
+  
+  // Função para buscar as obras (arquivos na pasta)
+  const fetchObras = async () => {
+    setLoading(true);
     try {
-      const response = await apiService.obras.getAll()
-      if (!response.error) {
-        const obras = response.obras || []
-        setObras(obras)
-
-        // Buscar gastos para cada obra
-        const obrasComGastosPromises = obras.map(async (obra) => {
-          try {
-            const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
-              apiService.materiais.getAll({ obraId: obra._id }),
-              apiService.maoObra.getAll({ obraId: obra._id }),
-              apiService.equipamentos.getAll({ obraId: obra._id }),
-              apiService.contratos.getAll({ obraId: obra._id }),
-              apiService.outrosGastos.getAll({ obraId: obra._id }),
-            ])
-
-            const totalGastos = [
-              ...(materiaisRes.materiais || []),
-              ...(maoObraRes.maoObras || []),
-              ...(equipamentosRes.equipamentos || []),
-              ...(contratosRes.contratos || []),
-              ...(outrosGastosRes.gastos || []),
-            ].reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
-
-            return {
-              ...obra,
-              totalGastos,
-              saldo: (obra.valorContrato || 0) - totalGastos,
-              percentualGasto: obra.valorContrato > 0 ? (totalGastos / obra.valorContrato) * 100 : 0,
-            }
-          } catch (error) {
-            console.warn(`Erro ao buscar gastos da obra ${obra.nome}:`, error)
-            return {
-              ...obra,
-              totalGastos: 0,
-              saldo: obra.valorContrato || 0,
-              percentualGasto: 0,
-            }
-          }
-        })
-
-        const obrasComGastos = await Promise.all(obrasComGastosPromises)
-        setObrasComGastos(obrasComGastos)
-      } else {
-        showAlert(response.message || "Erro ao carregar obras.", "danger")
-      }
+      const response = await ApiBase.get(`/google/drive/${folderId}`);
+      setObras(response.data);
     } catch (error) {
-      console.error("Erro ao buscar obras:", error)
-      showAlert("Erro ao carregar obras. Verifique a conexão com a API.", "danger")
+      console.error('Erro ao buscar obras:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  };
 
   useEffect(() => {
-    fetchObras()
-  }, [fetchObras])
+    fetchObras();
+  }, []);
 
-  const handleCreateObra = async (formData) => {
-    setIsSubmitting(true)
+  // Função para criar uma nova obra (nova planilha) e atualizar a lista
+  const handleCreateObra = async (e) => {
+    e.preventDefault();
     try {
-      // 1. Primeiro criar a planilha no Google Sheets
-      showAlert("Criando planilha no Google Sheets...", "info")
-
-      const planilhaResponse = await GoogleSheetsService.criarPlanilhaObra(formData.nome, formData)
-
-      if (!planilhaResponse || !planilhaResponse.spreadsheetId) {
-        throw new Error("Erro ao criar planilha no Google Sheets")
+      // Cria a nova planilha enviando o título no body
+      const data = {
+        templateId: templateId, 
+        newTitle: newObraName, 
+        folderId: folderId
       }
-
-      showAlert("Planilha criada com sucesso! Criando obra...", "info")
-
-      // 2. Adicionar o spreadsheetId aos dados da obra
-      const dadosObraComPlanilha = {
-        ...formData,
-        spreadsheetId: planilhaResponse.spreadsheetId,
-        spreadsheetUrl: planilhaResponse.url,
-      }
-
-      // 3. Criar a obra na API já com o spreadsheetId
-      const response = await apiService.obras.create(dadosObraComPlanilha)
-
-      if (!response.error) {
-        showAlert(`Obra "${formData.nome}" criada com sucesso e planilha associada!`, "success")
-        setShowModal(false)
-        fetchObras() // Recarregar lista
-      } else {
-        // Se falhou ao criar a obra, mas a planilha foi criada, informar ao usuário
-        showAlert(`Planilha criada, mas erro ao salvar obra: ${response.message || "Erro desconhecido"}`, "warning")
-      }
+      await ApiBase.post('/google/sheets/copy', { data });
+      setNewObraName('');
+      setShowModal(false);
+      // Atualiza a lista de obras
+      fetchObras();
     } catch (error) {
-      console.error("Erro no fluxo de criação da obra:", error)
-
-      if (error.message?.includes("planilha")) {
-        showAlert("Erro ao criar planilha no Google Sheets. Tente novamente.", "danger")
-      } else {
-        showAlert(error.response?.data?.msg || error.message || "Erro ao criar obra. Tente novamente.", "danger")
-      }
-    } finally {
-      setIsSubmitting(false)
+      console.error('Erro ao criar obra:', error);
     }
-  }
-
-  const handleDeleteObra = async () => {
-    if (!obraToDelete) return
-
-    setIsDeleting(true)
-    try {
-      showAlert("Excluindo planilha e obra...", "info")
-
-      const response = await apiService.obras.delete(obraToDelete._id)
-
-      if (!response.error) {
-        showAlert(`Obra "${obraToDelete.nome}" excluída com sucesso!`, "success")
-        setShowDeleteModal(false)
-        setObraToDelete(null)
-        fetchObras() // Recarregar lista
-      } else {
-        showAlert(response.message || "Erro ao excluir obra.", "danger")
-      }
-    } catch (error) {
-      console.error("Erro ao excluir obra:", error)
-      showAlert(error.response?.data?.msg || error.message || "Erro ao excluir obra. Tente novamente.", "danger")
-    } finally {
-      setIsDeleting(false)
-    }
-  }
-
-  const confirmDeleteObra = (obra) => {
-    setObraToDelete(obra)
-    setShowDeleteModal(true)
-  }
-
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0)
-
-  const getStatusVariant = (status) => {
-    const statusMap = {
-      planejamento: "secondary",
-      em_andamento: "primary",
-      pausada: "warning",
-      concluida: "success",
-      cancelada: "danger",
-    }
-    return statusMap[status] || "secondary"
-  }
-
-  const getStatusLabel = (status) => {
-    const statusMap = {
-      planejamento: "Planejamento",
-      em_andamento: "Em Andamento",
-      pausada: "Pausada",
-      concluida: "Concluída",
-      cancelada: "Cancelada",
-    }
-    return statusMap[status] || status
-  }
-
-  const handleOpenSpreadsheet = (obra) => {
-    if (obra.spreadsheetUrl) {
-      window.open(obra.spreadsheetUrl, "_blank")
-    } else if (obra.sheets_id) {
-      window.open(`https://docs.google.com/spreadsheets/d/${obra.sheets_id}/edit`, "_blank")
-    }
-  }
+  };
 
   return (
-    <Container className="mt-4 mb-5">
-      <Row className="mb-4 align-items-center">
-        <Col>
-          <h1 className="mb-0">Obras</h1>
-          <p className="text-muted">Gerencie e acompanhe todos os seus projetos.</p>
-        </Col>
-        <Col xs="auto">
-          <Button variant="primary" onClick={() => setShowModal(true)}>
-            <Plus size={16} className="me-2" />
-            Nova Obra
-          </Button>
-        </Col>
-      </Row>
-
-      {alert.show && (
-        <Alert variant={alert.variant} onClose={() => setAlert({ show: false })} dismissible>
-          {alert.message}
-        </Alert>
-      )}
-
+    <Container className="mt-4">
+      <h1>Lista de Obras</h1>
       {loading ? (
-        <div className="text-center p-5">
-          <Spinner animation="border" variant="primary" />
-          <p className="mt-3">Carregando obras...</p>
-        </div>
+        <p>Carregando...</p>
       ) : (
-        <Row className="g-4">
-          {obrasComGastos.length > 0 ? (
-            obrasComGastos.map((obra) => (
-              <Col key={obra._id} md={6} lg={4}>
-                <Card className="h-100 shadow-sm">
-                  <Card.Header className="d-flex justify-content-between align-items-center">
-                    <h5 className="mb-0">{obra.nome}</h5>
-                    <div className="d-flex align-items-center gap-2">
-                      <Badge bg="success" title="Dados do Banco de Dados">
-                        <Database size={12} />
-                      </Badge>
-                      <Dropdown>
-                        <Dropdown.Toggle variant="outline-secondary" size="sm" className="border-0">
-                          <MoreVertical size={16} />
-                        </Dropdown.Toggle>
-                        <Dropdown.Menu>
-                          <Dropdown.Item onClick={() => confirmDeleteObra(obra)} className="text-danger">
-                            <Trash2 size={16} className="me-2" />
-                            Excluir Obra
-                          </Dropdown.Item>
-                        </Dropdown.Menu>
-                      </Dropdown>
-                    </div>
-                  </Card.Header>
-                  <Card.Body className="d-flex flex-column">
-                    <p>
-                      <strong>Cliente:</strong> {obra.cliente || "Não informado"}
-                    </p>
-                    {obra.endereco && (
-                      <p>
-                        <strong>Endereço:</strong> {obra.endereco}
-                      </p>
-                    )}
-                    <p>
-                      <strong>Valor do Contrato:</strong> {formatCurrency(obra.valorContrato)}
-                    </p>
-                    <p>
-                      <strong>Status:</strong>{" "}
-                      <Badge bg={getStatusVariant(obra.status)}>{getStatusLabel(obra.status)}</Badge>
-                    </p>
-
-                    <GastosResumo totalGastos={obra.totalGastos} valorContrato={obra.valorContrato} />
-                    <div className="mt-auto d-flex flex-column gap-2">
-                      <Link to={`/obras/${obra._id}`} className="w-100">
-                        <Button variant="outline-primary" className="w-100">
-                          <Eye size={16} className="me-2" />
-                          Ver Dashboard
-                        </Button>
-                      </Link>
-
-                      {(obra.sheets_id || obra.spreadsheetUrl) && (
-                        <Button
-                          variant="outline-success"
-                          className="w-100"
-                          onClick={() => handleOpenSpreadsheet(obra)}
-                          title="Abrir planilha no Google Sheets"
-                        >
-                          <ExternalLink size={16} className="me-2" />
-                          Abrir Planilha
-                        </Button>
-                      )}
-                    </div>
+        <Row>
+          {obras.length > 0 ? (
+            obras.map((obra) => (
+              <Col key={obra.id} md={4} className="mb-4">
+                <Card className="h-100">
+                  <Card.Body>
+                    <Card.Title>{obra.name}</Card.Title>
+                    {/* O link 'stretched-link' torna o card inteiro clicável */}
+                    <Link to={`/dashboard/${obra.id}`} className="stretched-link"></Link>
                   </Card.Body>
-                  <Card.Footer>
-                    <small className="text-muted">
-                      {obra.dataInicio && (
-                        <>
-                          Início: {new Date(obra.dataInicio).toLocaleDateString("pt-BR")}
-                          {obra.dataPrevisaoTermino && (
-                            <> | Término: {new Date(obra.dataPrevisaoTermino).toLocaleDateString("pt-BR")}</>
-                          )}
-                        </>
-                      )}
-                      {!obra.dataInicio && "Datas não informadas"}
-                    </small>
-                  </Card.Footer>
                 </Card>
               </Col>
             ))
           ) : (
             <Col>
-              <Card className="text-center p-5">
-                <Building size={48} className="mx-auto text-muted mb-3" />
-                <h4>Nenhuma obra encontrada</h4>
-                <p>Clique em "Nova Obra" para começar a cadastrar seus projetos.</p>
-              </Card>
+              <p>Nenhuma obra encontrada.</p>
             </Col>
           )}
+          {/* Card para adicionar nova obra */}
+          <Col md={4} className="mb-4">
+            <Card className="h-100 text-center">
+              <Card.Body>
+                <Card.Title>Adicionar Nova Obra</Card.Title>
+                <Button variant="primary" onClick={() => setShowModal(true)}>
+                  Nova Obra
+                </Button>
+              </Card.Body>
+            </Card>
+          </Col>
         </Row>
       )}
 
-      {/* Modal de Criação */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Criar Nova Obra</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <ObraForm onSubmit={handleCreateObra} isLoading={isSubmitting} onCancel={() => setShowModal(false)} />
-        </Modal.Body>
-      </Modal>
-
-      {/* Modal de Confirmação de Exclusão */}
-      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title className="text-danger">Confirmar Exclusão</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <div className="text-center">
-            <Trash2 size={48} className="text-danger mb-3" />
-            <h5>Tem certeza que deseja excluir esta obra?</h5>
-            {obraToDelete && (
-              <div className="mt-3">
-                <p>
-                  <strong>Obra:</strong> {obraToDelete.nome}
-                </p>
-                <p>
-                  <strong>Cliente:</strong> {obraToDelete.cliente}
-                </p>
-                <Alert variant="warning" className="mt-3">
-                  <strong>Atenção:</strong> Esta ação irá excluir permanentemente:
-                  <ul className="mt-2 mb-0 text-start">
-                    <li>A planilha do Google Sheets associada</li>
-                    <li>Todos os dados da obra no sistema</li>
-                  </ul>
-                  Esta ação não pode ser desfeita!
-                </Alert>
-              </div>
-            )}
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowDeleteModal(false)} disabled={isDeleting}>
-            Cancelar
-          </Button>
-          <Button variant="danger" onClick={handleDeleteObra} disabled={isDeleting}>
-            {isDeleting ? (
-              <>
-                <Spinner animation="border" size="sm" className="me-2" />
-                Excluindo...
-              </>
-            ) : (
-              <>
-                <Trash2 size={16} className="me-2" />
-                Excluir Obra
-              </>
-            )}
-          </Button>
-        </Modal.Footer>
+      {/* Modal para criar nova obra */}
+      <Modal show={showModal} onHide={() => setShowModal(false)}>
+        <Form onSubmit={handleCreateObra}>
+          <Modal.Header closeButton>
+            <Modal.Title>Nova Obra</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <Form.Group controlId="obraName">
+              <Form.Label>Nome da Obra</Form.Label>
+              <Form.Control
+                type="text"
+                placeholder="Digite o nome da obra"
+                value={newObraName}
+                onChange={(e) => setNewObraName(e.target.value)}
+                required
+              />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" type="submit">
+              Criar
+            </Button>
+          </Modal.Footer>
+        </Form>
       </Modal>
     </Container>
-  )
-}
+  );
+};
 
-export default ObrasAtivas
+export default Obras_ativas;
