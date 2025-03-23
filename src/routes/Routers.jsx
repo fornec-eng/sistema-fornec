@@ -13,6 +13,7 @@ import Financeiro from "../pages/financeiro";
 import Inventario from "../pages/inventario";
 import Usuarios from "../pages/usuarios";
 import Pagamento_semanal from "../pages/pagamento_semanal";
+import Obras_ativas from "../pages/obras_ativas";
 
 const Routers = () => {
   return (
@@ -24,8 +25,8 @@ const Routers = () => {
             <Route path="/home" element={<PrivateRoute />} >
                 <Route path="/home" element={<Home />} />
             </Route> 
-            <Route path="/obra" element={<PrivateRoute />} >
-                <Route path="/obra" element={<Cards />} />
+            <Route path="/obras_ativas" element={<PrivateRoute />} >
+                <Route path="/obras_ativas" element={<Obras_ativas />} />
             </Route>
             <Route path="/financeiro" element={<PrivateRoute />} >
                 <Route path="/financeiro" element={<Financeiro />} />

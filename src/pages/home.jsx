@@ -59,10 +59,10 @@ const Home = () => {
       <Row className="g-4" style={{ fontFamily: 'Rawline' }}>
         {[
           { link: '/usuarios', img: campanhasImg, text: 'Usuários Sistema' },
-          { link: '/demografico', img: DemograficoImg, text: 'Inventário' },
-          { link: '/powerbi', img: trendingTopicsImg, text: 'Pagamentos Semanais' },
-          { link: '/obra', img: dashboardImg, text: 'Obras ativas' },
-          { link: '/stilingue', img: StilingueImg, text: 'Controle Financeiro' }
+          { link: '/inventario', img: DemograficoImg, text: 'Inventário' },
+          { link: '/pagamento_semanal', img: trendingTopicsImg, text: 'Pagamentos Semanais' },
+          { link: '/obras_ativas', img: dashboardImg, text: 'Obras ativas' },
+          { link: '/financeiro', img: StilingueImg, text: 'Controle Financeiro' }
         ].map((item, index) => (
           <Col key={index} md={4}>
             <Link to={item.link} style={{ textDecoration: 'none' }}>
