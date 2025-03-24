@@ -71,19 +71,24 @@ const Login = () => {
 
   return (
     <Row className="h-100" style={{ fontFamily: 'Rawline' }}>
-      <Col md={6} className="d-none d-md-flex flex-column p-4" style={{ backgroundColor: 'white' }}>
-        <div className="d-flex flex-column justify-content-center h-100">
-          <h1 style={{ fontSize: '2rem', textAlign: 'center', marginBottom: '2rem' }}>
-            Sistema Fornec
-          </h1>
+      <Col md={6} className="d-none d-md-flex flex-column" style={{ backgroundColor: 'white' }}>
+        <div>
+          <Button
+              className="w-50 py-3 mb-2"
+              style={{ backgroundColor: '#47117D', border: 'none', borderRadius: '8px' }}
+              type="submit"
+              onClick={()=> navigate('/cadastro')}
+            >
+              Cadastrar Usuário
+            </Button>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <Image src={login_fundo} alt="Fundo" style={{ width: 'auto', maxWidth: '100%', height: 'auto' }} />
           </div>
         </div>
       </Col>
 
-      <Col md={6} className="p-4" style={{ backgroundColor: '#f8f9fa' }}>
-        <Image src={logo_fornec} alt="Fornec Engenharia" style={{ width: '280px', marginBottom: '3rem' }} className="d-block mx-auto" />
+      <Col md={6} style={{ backgroundColor: '#f8f9fa' }}>
+        <Image src={logo_fornec} alt="Fornec Engenharia" style={{ width: '240px' }} className="d-flex mx-auto" />
 
         <Form style={{ maxWidth: '500px', margin: '0 auto' }} onSubmit={handleLogin}>
           <Form.Group className="mb-4">
