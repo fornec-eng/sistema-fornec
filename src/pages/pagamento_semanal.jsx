@@ -1,9 +1,10 @@
 import React from 'react'
+import PagamentoCard from '../components/CardFuncionario'
 
 const Pagamento_semanal = () => {
   return (
     <>
-        Pagamento_semanal
+        <PagamentoCard />
     </>
   )
 }
