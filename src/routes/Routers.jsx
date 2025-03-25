@@ -41,6 +41,11 @@ const Routers = () => {
             <Route path="/inventario" element={<Inventario />} />   
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
+
+            {/* Nova rota para o dashboard, recebendo o ID da obra */}
+            <Route path="/dashboard/:id" element={<PrivateRoute />}>
+                <Route path="/dashboard/:id" element={<Cards />} />
+            </Route>
         </Routes>
     </>
   );

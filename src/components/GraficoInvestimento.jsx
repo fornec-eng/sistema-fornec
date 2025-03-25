@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Card } from 'react-bootstrap';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-import ChartDataLabels from 'chartjs-plugin-datalabels'; // Importando o plugin
+import ChartDataLabels from 'chartjs-plugin-datalabels';
+import ApiBase from '../services/ApiBase';
 
 // Registrar os componentes necessários do Chart.js
 ChartJS.register(
@@ -12,16 +13,19 @@ ChartJS.register(
   Title, 
   Tooltip, 
   Legend, 
-  ChartDataLabels // Registrando o plugin de rótulos
+  ChartDataLabels
 );
 
-const GraficoInvestimentos = () => {
+const GraficoInvestimentos = ({ obra }) => {
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
 
   useEffect(() => {
-    fetch('https://api-google-sheets-7zph.vercel.app/getDataEngResumo')
-      .then((response) => response.json())
-      .then((result) => {
+    const fetchData = async () => {
+      try {
+        const res = await ApiBase.post('/google/sheets/data', {
+          data: { spreadsheetId: obra.id, range: 'Resumo' }
+        });
+        const result = res.data;
         // Extraindo os valores relevantes do JSON
         const gastos = [
           { label: 'Gasto material', value: parseFloat(result.values[6][1].replace('R$', '').replace('.', '').replace(',', '.').trim()) },
@@ -36,13 +40,13 @@ const GraficoInvestimentos = () => {
             {
               label: 'Valor Investido (R$)',
               data: gastos.map(gasto => gasto.value),
-              backgroundColor: '#007bff', // Cor das barras
+              backgroundColor: '#007bff',
               borderColor: '#0056b3',
               borderWidth: 1,
-              barPercentage: 0.6, // Largura das barras
+              barPercentage: 0.6,
               datalabels: {
                 display: true,
-                color: '#000000', // Cor preta do rótulo
+                color: '#000000',
                 align: 'top',
                 font: {
                   weight: 'bold',
@@ -53,8 +57,15 @@ const GraficoInvestimentos = () => {
             },
           ],
         });
-      });
-  }, []);
+      } catch (error) {
+        console.error('Erro ao buscar os dados:', error);
+      }
+    };
+
+    if (obra && obra.id) {
+      fetchData();
+    }
+  }, [obra]);
 
   return (
     <div className="col-md-6 col-lg-6">
@@ -66,7 +77,7 @@ const GraficoInvestimentos = () => {
               data={chartData}
               options={{
                 responsive: true,
-                maintainAspectRatio: true, // Mantém a proporção do gráfico
+                maintainAspectRatio: true,
                 plugins: {
                   tooltip: {
                     callbacks: {
@@ -77,17 +88,17 @@ const GraficoInvestimentos = () => {
                   },
                   datalabels: {
                     display: true,
-                    color: '#000000', // Cor preta do rótulo
+                    color: '#000000',
                   },
                 },
                 scales: {
                   y: {
                     title: {
-                      display: false, // Retirando o título do eixo Y
+                      display: false,
                     },
                     beginAtZero: true,
                     ticks: {
-                      display: false, // Retirando os valores do eixo Y
+                      display: false,
                     },
                   },
                 },

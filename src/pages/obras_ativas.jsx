@@ -201,6 +201,7 @@ const Obras_ativas = () => {
                           </Button>
                           <Link
                             to={`/dashboard/${obra.id}`}
+                            state={{ name: obra.name }}
                             className="w-50"
                             style={{ textDecoration: 'none' }}
                           >

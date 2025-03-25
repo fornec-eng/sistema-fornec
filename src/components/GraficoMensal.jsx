@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Card } from 'react-bootstrap';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
-import ChartDataLabels from 'chartjs-plugin-datalabels'; // Importando o plugin
+import ChartDataLabels from 'chartjs-plugin-datalabels';
+import ApiBase from '../services/ApiBase';
 
-// Registrar os componentes necessários do Chart.js
 ChartJS.register(
   CategoryScale, 
   LinearScale, 
@@ -13,23 +13,36 @@ ChartJS.register(
   Title, 
   Tooltip, 
   Legend, 
-  ChartDataLabels // Registrando o plugin de rótulos
+  ChartDataLabels
 );
 
-const GraficoMensal = () => {
+const GraficoMensal = ({ obra }) => {
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
 
   useEffect(() => {
-    fetch('https://api-google-sheets-7zph.vercel.app/getDataEngResumoMensal')
-      .then((response) => response.json())
-      .then((result) => {
+    const fetchData = async () => {
+      try {
+        // Requisição utilizando a nova API e enviando o range "resumo_mensal"
+        const res = await ApiBase.post('/google/sheets/data', {
+          data: { spreadsheetId: obra.id, range: 'resumo_mensal' }
+        });
+        const result = res.data;
         const months = [];
         const values = [];
         
+        // Processa os dados (ignorando a primeira e última linha, conforme a lógica original)
         result.values.slice(1, -1).forEach(row => {
           if (row[1]) {
             months.push(row[0]);
-            values.push(parseFloat(row[1].replace('R$', '').replace('.', '').replace(',', '.').trim())); // Converte para número
+            values.push(
+              parseFloat(
+                row[1]
+                  .replace('R$', '')
+                  .replace('.', '')
+                  .replace(',', '.')
+                  .trim()
+              )
+            );
           }
         });
 
@@ -42,7 +55,7 @@ const GraficoMensal = () => {
               fill: false,
               borderColor: '#007bff',
               tension: 0.1,
-              // Adicionando rótulos de valor nos pontos do gráfico
+              // Configuração do plugin para exibir os rótulos de dados
               datalabels: {
                 display: true,
                 color: '#007bff',
@@ -51,13 +64,21 @@ const GraficoMensal = () => {
                   weight: 'bold',
                   size: 12,
                 },
-                formatter: (value) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                formatter: (value) =>
+                  `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
               },
             },
           ],
         });
-      });
-  }, []);
+      } catch (error) {
+        console.error('Erro ao buscar os dados:', error);
+      }
+    };
+
+    if (obra && obra.id) {
+      fetchData();
+    }
+  }, [obra]);
 
   return (
     <div className="col-md-6 col-lg-6">
@@ -77,7 +98,7 @@ const GraficoMensal = () => {
                       },
                     },
                   },
-                  datalabels: { // Habilitando rótulos de dados
+                  datalabels: {
                     display: true,
                   },
                 },
@@ -89,7 +110,7 @@ const GraficoMensal = () => {
                     },
                     beginAtZero: true,
                     ticks: {
-                      display: false, // Removendo os valores no eixo Y
+                      display: false,
                     },
                   },
                 },
