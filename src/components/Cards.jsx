@@ -6,7 +6,7 @@ import CardInvestimentos from './Cards_investimentos';
 import Cronograma from './CardCronograma';
 import GraficoMensal from './GraficoMensal';
 import GraficoInvestimentos from './GraficoInvestimento';
-
+  
 const Cards = () => {
   const { id } = useParams();
   // Recupera o nome da obra que foi passado via state na navegação

@@ -31,7 +31,8 @@ const GraficoInvestimentos = ({ obra }) => {
           { label: 'Gasto material', value: parseFloat(result.values[6][1].replace('R$', '').replace('.', '').replace(',', '.').trim()) },
           { label: 'Locação de equipamento', value: parseFloat(result.values[7][1].replace('R$', '').replace('.', '').replace(',', '.').trim()) },
           { label: 'Mão de Obra', value: parseFloat(result.values[8][1].replace('R$', '').replace('.', '').replace(',', '.').trim()) },
-          { label: 'Outros gastos', value: parseFloat(result.values[9][1].replace('R$', '').replace('.', '').replace(',', '.').trim()) },
+          { label: 'Contratos', value: parseFloat(result.values[9][1].replace('R$', '').replace('.', '').replace(',', '.').trim()) },
+          { label: 'Outros gastos', value: parseFloat(result.values[10][1].replace('R$', '').replace('.', '').replace(',', '.').trim()) },
         ];
 
         setChartData({
