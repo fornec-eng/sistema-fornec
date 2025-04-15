@@ -1,20 +1,20 @@
-import React from 'react';
-import { useParams, useLocation } from 'react-router-dom';
-import CardFuncionario from './CardFuncionario';
-import TempoTranscorrido from './CardTempo';
-import CardInvestimentos from './Cards_investimentos';
-import Cronograma from './CardCronograma';
-import GraficoMensal from './GraficoMensal';
-import GraficoInvestimentos from './GraficoInvestimento';
-  
+"use client"
+import { useParams, useLocation } from "react-router-dom"
+import TempoTranscorrido from "./CardTempo"
+import CardInvestimentos from "./Cards_investimentos"
+import Cronograma from "./CardCronograma"
+import GraficoMensal from "./GraficoMensal"
+import GraficoInvestimentos from "./GraficoInvestimento"
+import CardContratos from "./CardContratos"
+
 const Cards = () => {
-  const { id } = useParams();
+  const { id } = useParams()
   // Recupera o nome da obra que foi passado via state na navegação
-  const location = useLocation();
-  const obraName = location.state?.name || 'Dashboard';
+  const location = useLocation()
+  const obraName = location.state?.name || "Dashboard"
 
   // Cria o objeto obra para ser repassado aos componentes filhos
-  const obra = { id, name: obraName };
+  const obra = { id, name: obraName }
 
   return (
     <div className="container mt-4">
@@ -35,10 +35,11 @@ const Cards = () => {
         {/* Card 5: Tarefa Atual e Status */}
         <GraficoInvestimentos obra={obra} />
 
-        
+        {/* Novo Card: Contratos */}
+        <CardContratos obra={obra} />
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default Cards;
+export default Cards

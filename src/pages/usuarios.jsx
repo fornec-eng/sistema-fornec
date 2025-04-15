@@ -35,6 +35,7 @@ const Usuarios = () => {
       const res = await ApiBase.get('/list', { params: { limit: 100 } });
       if (!res.data.error) {
         const users = res.data.users;
+        console.log(users)
         const pending = users.filter((user) => user.role === 'PreAprovacao');
         const approved = users.filter((user) => user.role !== 'PreAprovacao');
         setPendingUsers(pending);
