@@ -149,7 +149,7 @@ const Home = () => {
 
   return (
     <Container>
-      <div className="d-flex justify-content-between align-items-center mb-5">
+      <div className="d-flex justify-content-between align-items-center mb-2">
         <h1
           style={{
             fontSize: "2rem",
