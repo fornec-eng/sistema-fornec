@@ -1,10 +1,15 @@
-import React from 'react'
-import PagamentoCard from '../components/CardFuncionario'
+"use client"
+import React from "react"
+import { Helmet } from "react-helmet"
+import PagamentoCard from "../components/CardFuncionario"
 
 const Pagamento_semanal = () => {
   return (
     <>
-        <PagamentoCard />
+      <Helmet>
+        <title>Gestão de Pagamentos - Fornec Engenharia</title>
+      </Helmet>
+      <PagamentoCard />
     </>
   )
 }
