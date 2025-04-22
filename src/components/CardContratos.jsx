@@ -20,7 +20,7 @@ const CardContratos = ({ obra }) => {
         })
 
         const data = res.data.values || []
-        console.log("Dados recebidos da API:", data)
+        console.log(data)
 
         // Verificar se temos pelo menos duas linhas (cabeçalho e dados)
         if (data.length < 2) {
@@ -42,34 +42,25 @@ const CardContratos = ({ obra }) => {
           // Processar os pagamentos (grupos de 3 colunas: VALOR, PIX, DATA)
           // O primeiro pagamento começa no índice 3
           for (let i = 3; i < row.length; i += 3) {
-            // Verificar se existe um valor no início do grupo
-            if (row[i] && row[i].trim() !== "") {
+            // Verificar se temos pelo menos um valor no grupo
+            if (row[i]) {
               contrato.pagamentos.push({
-                // CORREÇÃO: Trocando a ordem dos campos para corresponder ao formato recebido
-                nome: row[i] || "",          // Antes era 'valor'
-                data: row[i + 1] || "",      // Antes era 'pix'
-                valor: row[i + 2] || "",     // Antes era 'data'
+                valor: row[i] || "",
+                pix: row[i + 1] || "",
+                data: row[i + 2] || "",
               })
             }
           }
-          
-          // Log para depuração
-          console.log(`Contrato ${contrato.id} - ${contrato.nome}: ${contrato.pagamentos.length} pagamentos processados`)
-          
+
           // Calcular o valor total pago e o valor restante
           const valorTotalNumerico = converterParaNumero(contrato.valorTotal)
           let valorPago = 0
 
           // Somar todos os valores dos pagamentos
-          contrato.pagamentos.forEach((pagamento, idx) => {
-            // CORREÇÃO: Agora usando o campo 'valor' corretamente
-            const valorNumerico = converterParaNumero(pagamento.valor)
-            valorPago += valorNumerico
-            console.log(`Pagamento #${idx+1}: ${pagamento.valor} => ${valorNumerico}`)
+          contrato.pagamentos.forEach((pagamento) => {
+            valorPago += converterParaNumero(pagamento.valor)
           })
 
-          console.log(`Total pago: ${valorPago}`)
-          
           contrato.valorPago = formatarMoeda(valorPago)
           
           // Calcular o valor restante (pode ser negativo se ultrapassou o planejado)
@@ -80,7 +71,6 @@ const CardContratos = ({ obra }) => {
           return contrato
         })
 
-        console.log("Contratos processados:", contratosProcessados)
         setContratos(contratosProcessados)
       } catch (error) {
         console.error("Erro ao buscar dados de contratos:", error)
@@ -97,23 +87,7 @@ const CardContratos = ({ obra }) => {
   // Função para converter valor monetário em número
   const converterParaNumero = (valorString) => {
     if (!valorString || typeof valorString !== "string") return 0
-    
-    // Remover todos os caracteres não numéricos, exceto o separador decimal
-    const valorLimpo = valorString
-      .replace("R$", "")
-      .replace(/\./g, "")  // Remove pontos de milhar
-      .replace(",", ".")   // Substitui vírgula por ponto decimal
-      .trim()
-    
-    // Verificar se o valor é numérico
-    if (isNaN(valorLimpo)) {
-      console.warn(`Valor não numérico encontrado: "${valorString}" => "${valorLimpo}"`)
-      return 0
-    }
-    
-    const valorNumerico = Number.parseFloat(valorLimpo) || 0
-    console.log(`Conversão: "${valorString}" => ${valorNumerico}`)
-    return valorNumerico
+    return Number.parseFloat(valorString.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0
   }
 
   // Função para formatar valor como moeda
@@ -361,18 +335,36 @@ const CardContratos = ({ obra }) => {
                     <thead className="table-light">
                       <tr>
                         <th>#</th>
-                        <th>Nome/Destinatário</th>
                         <th>Data</th>
                         <th>Valor</th>
+                        <th>Chave PIX</th>
+                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {contratoSelecionado.pagamentos.map((pagamento, idx) => (
                         <tr key={idx}>
                           <td>{idx + 1}</td>
-                          <td>{pagamento.nome || "Não informado"}</td>
                           <td>{pagamento.data || "Não informada"}</td>
                           <td>{pagamento.valor || "R$ 0,00"}</td>
+                          <td>
+                            <div className="text-truncate" style={{ maxWidth: "200px" }}>
+                              {pagamento.pix || "Não informada"}
+                            </div>
+                          </td>
+                          <td>
+                            {pagamento.pix && (
+                              <Button
+                                variant="outline-secondary"
+                                size="sm"
+                                onClick={() => copiarPix(pagamento.pix)}
+                                className="d-flex align-items-center"
+                              >
+                                <Copy size={14} className="me-1" />
+                                {copiado ? "Copiado!" : "Copiar PIX"}
+                              </Button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

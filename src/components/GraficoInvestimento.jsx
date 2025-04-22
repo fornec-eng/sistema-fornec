@@ -68,16 +68,16 @@ const GraficoInvestimentos = ({ obra }) => {
   }, [obra]);
 
   return (
-    <div className="col-md-6 col-lg-6">
-      <Card style={{ minHeight: '200px', borderRadius: '10px', boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)' }}>
-        <Card.Body style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+    <div className="col-md-12 col-lg-12 mb-4"> {/* Alterado para ocupar toda a largura */}
+      <Card style={{ minHeight: '400px', borderRadius: '10px', boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)' }}> {/* Aumentado a altura mínima */}
+        <Card.Body>
           <Card.Title>Divisão do Valor Investido</Card.Title>
-          <div className="chart-container" style={{ height: '100%', overflow: 'hidden' }}>
+          <div className="chart-container" style={{ height: '350px' }}> {/* Definição explícita da altura */}
             <Bar
               data={chartData}
               options={{
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false, // Importante para controlar a altura
                 plugins: {
                   tooltip: {
                     callbacks: {
@@ -89,16 +89,38 @@ const GraficoInvestimentos = ({ obra }) => {
                   datalabels: {
                     display: true,
                     color: '#000000',
+                    font: {
+                      weight: 'bold',
+                      size: 14,
+                    },
+                  },
+                  legend: {
+                    display: true,
+                    position: 'top',
                   },
                 },
                 scales: {
                   y: {
                     title: {
-                      display: false,
+                      display: true,
+                      text: 'Valor (R$)',
+                      font: {
+                        size: 14,
+                      },
                     },
                     beginAtZero: true,
                     ticks: {
-                      display: false,
+                      display: true, // Mostra os valores do eixo Y
+                      font: {
+                        size: 12,
+                      },
+                    },
+                  },
+                  x: {
+                    ticks: {
+                      font: {
+                        size: 12,
+                      },
                     },
                   },
                 },
