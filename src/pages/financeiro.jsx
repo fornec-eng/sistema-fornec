@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect, useRef } from "react"
 import { Container, Row, Col, Card, Spinner, Form, Button, Table, Tabs, Tab } from "react-bootstrap"
 import { Bar, Line } from "react-chartjs-2"
@@ -13,7 +15,8 @@ import {
   Legend,
 } from "chart.js"
 import ChartDataLabels from "chartjs-plugin-datalabels"
-import { Download, Filter, RefreshCw } from "lucide-react"
+import { Download, Filter, RefreshCw, Plus } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 import ApiBase from "../services/ApiBase"
 import jsPDF from "jspdf"
 
@@ -31,6 +34,7 @@ ChartJS.register(
 )
 
 const Financeiro = () => {
+  const navigate = useNavigate()
   // Estados para armazenar dados
   const [loading, setLoading] = useState(true)
   const [obras, setObras] = useState([])
@@ -75,17 +79,36 @@ const Financeiro = () => {
   useEffect(() => {
     const fetchObras = async () => {
       try {
-        const response = await ApiBase.get(`/google/drive/${FOLDER_OBRAS_ID}`)
-        // Filtrar para remover o modelo
-        const filteredObras = response.data.filter((obra) => obra.name !== "modelo_planilha_obra (Não mexer)")
-        setObras(filteredObras)
+        // Buscar obras da API MongoDB
+        const response = await ApiBase.get("/pagamentos")
+        const obrasAPI = response.data.pagamentos || []
+
+        // Transformar dados para o formato esperado
+        const obrasFormatadas = obrasAPI.map((obra) => ({
+          id: obra._id,
+          name: obra.obra.nome,
+        }))
+
+        setObras(obrasFormatadas)
 
         // Buscar dados financeiros de cada obra
-        if (filteredObras.length > 0) {
-          await fetchFinancialData(filteredObras)
+        if (obrasFormatadas.length > 0) {
+          await fetchFinancialDataFromAPI(obrasFormatadas)
         }
       } catch (error) {
         console.error("Erro ao buscar obras:", error)
+        // Fallback para Google Sheets se a API falhar
+        try {
+          const response = await ApiBase.get(`/google/drive/${FOLDER_OBRAS_ID}`)
+          const filteredObras = response.data.filter((obra) => obra.name !== "modelo_planilha_obra (Não mexer)")
+          setObras(filteredObras)
+
+          if (filteredObras.length > 0) {
+            await fetchFinancialData(filteredObras)
+          }
+        } catch (fallbackError) {
+          console.error("Erro no fallback:", fallbackError)
+        }
       }
     }
 
@@ -120,6 +143,66 @@ const Financeiro = () => {
     // Executar as buscas iniciais
     Promise.all([fetchObras(), fetchPlanilhasPagamento()]).finally(() => setLoading(false))
   }, [])
+
+  // Buscar dados financeiros da API MongoDB
+  const fetchFinancialDataFromAPI = async (obrasList) => {
+    try {
+      let totalOrcamento = 0
+      let totalGasto = 0
+      const gastosPorCategoria = {
+        "Gasto material": 0,
+        "Locação de equipamento": 0,
+        "Mão de Obra": 0,
+        "Outros gastos": 0,
+      }
+
+      // Para cada obra, buscar dados financeiros da API
+      await Promise.all(
+        obrasList.map(async (obra) => {
+          try {
+            const response = await ApiBase.get(`/pagamentos/${obra.id}`)
+            const pagamento = response.data.pagamento
+
+            if (pagamento) {
+              totalOrcamento += pagamento.obra.orcamento
+              totalGasto += pagamento.valorTotalGasto
+
+              // Categorizar gastos
+              pagamento.gastos.forEach((gasto) => {
+                gastosPorCategoria["Gasto material"] += gasto.valor
+              })
+
+              pagamento.contratos.forEach((contrato) => {
+                gastosPorCategoria["Mão de Obra"] += contrato.valorTotal
+              })
+
+              pagamento.pagamentosSemanais.forEach((ps) => {
+                gastosPorCategoria["Outros gastos"] += ps.totalReceber
+              })
+            }
+          } catch (error) {
+            console.error(`Erro ao buscar dados da obra ${obra.name}:`, error)
+          }
+        }),
+      )
+
+      // Converter gastos por categoria para array
+      const distribuicaoGastos = Object.entries(gastosPorCategoria)
+        .map(([categoria, valor]) => ({ categoria, valor }))
+        .sort((a, b) => b.valor - a.valor)
+
+      // Atualizar estado com os dados calculados
+      setResumoFinanceiro({
+        totalOrcamento,
+        totalGasto,
+        totalRestante: totalOrcamento - totalGasto,
+        gastoMensal: [], // Implementar lógica de gastos mensais se necessário
+        distribuicaoGastos,
+      })
+    } catch (error) {
+      console.error("Erro ao processar dados financeiros da API:", error)
+    }
+  }
 
   // Buscar dados financeiros de todas as obras
   const fetchFinancialData = async (obrasList) => {
@@ -615,9 +698,9 @@ const Financeiro = () => {
         </Col>
       </Row>
 
-      {/* Filtros */}
+      {/* Filtros e Card Adicionar Pagamento */}
       <Row className="mb-4">
-        <Col md={12}>
+        <Col md={9}>
           <Card style={{ borderRadius: "10px", boxShadow: "0 4px 10px rgba(0, 0, 0, 0.1)" }}>
             <Card.Body>
               <div className="d-flex flex-wrap justify-content-between align-items-center">
@@ -665,16 +748,32 @@ const Financeiro = () => {
                     Atualizar
                   </Button>
 
-                  <Button
-                    variant="outline-success"                    
-                    className="d-flex align-items-center"
-                    onClick={exportarPDF}
-                  >
+                  <Button variant="outline-success" className="d-flex align-items-center" onClick={exportarPDF}>
                     <Download size={16} className="me-2" />
                     Exportar
                   </Button>
                 </div>
               </div>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col md={3}>
+          <Card
+            style={{
+              borderRadius: "10px",
+              boxShadow: "0 4px 10px rgba(0, 0, 0, 0.1)",
+              backgroundColor: "#ffc107",
+              cursor: "pointer",
+              transition: "all 0.3s ease",
+            }}
+            className="h-100"
+            onClick={() => navigate("/adicionar-pagamentos")}
+          >
+            <Card.Body className="d-flex flex-column justify-content-center align-items-center text-center">
+              <Plus size={32} className="text-dark mb-2" />
+              <h5 className="mb-0 text-dark fw-bold">Adicionar Pagamento</h5>
+              <small className="text-dark opacity-75">Clique para adicionar novos pagamentos</small>
             </Card.Body>
           </Card>
         </Col>

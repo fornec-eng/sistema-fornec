@@ -17,26 +17,20 @@ import {
   OverlayTrigger,
   Badge,
   ProgressBar,
+  Alert,
 } from "react-bootstrap"
-import { DollarSign, Calendar, CheckCircle, AlertCircle, Clock, Download, FileText, Briefcase } from "lucide-react"
-import ApiBase from "../services/ApiBase"
+import { DollarSign, CheckCircle, AlertCircle, Download, FileText, Briefcase, Copy } from "lucide-react"
+import PagamentosApi from "../services/PagamentosApi"
 
 const PagamentoCard = () => {
-  // Pastas do Google Drive
-  const FOLDER_ATUAL_ID = "1JWqpHfPvYy9B846cXPTYotImfd3xqhRC" // Pagamentos atuais
-  const FOLDER_HISTORICO_ID = "1BMKBm2pk16I-KyrTyd1l2GpBU4t2Id_o" // Histórico de pagamentos
-
-  // Estados para armazenar a lista de planilhas de cada pasta
-  const [planilhasAtuais, setPlanilhasAtuais] = useState([])
-  const [planilhasHistorico, setPlanilhasHistorico] = useState([])
-
-  // Planilha selecionada (ID) e dados carregados
-  const [selectedSpreadsheetId, setSelectedSpreadsheetId] = useState("")
+  // Estados para armazenar dados
+  const [projetos, setProjetos] = useState([])
+  const [projetoSelecionado, setProjetoSelecionado] = useState("")
   const [pagamentos, setPagamentos] = useState([])
 
   // Controle de loading
-  const [loadingPlanilhas, setLoadingPlanilhas] = useState(false)
-  const [loadingDados, setLoadingDados] = useState(false)
+  const [loadingProjetos, setLoadingProjetos] = useState(false)
+  const [loadingPagamentos, setLoadingPagamentos] = useState(false)
 
   // Modal de detalhes
   const [showModal, setShowModal] = useState(false)
@@ -44,6 +38,10 @@ const PagamentoCard = () => {
 
   // Controle de cópia de PIX
   const [copied, setCopied] = useState(false)
+
+  // Estados para alertas
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
 
   // Estatísticas de pagamento
   const [estatisticas, setEstatisticas] = useState({
@@ -54,9 +52,6 @@ const PagamentoCard = () => {
     pagamentosPagos: 0,
     pagamentosPendentes: 0,
   })
-
-  // Nomes de planilhas a serem ignoradas
-  const IGNORAR_NOMES = ["Automatização da Planilha Semanal", "Modelo", "Histórico"]
 
   // Função para converter string de moeda para número
   const converterParaNumero = (valorString) => {
@@ -71,117 +66,56 @@ const PagamentoCard = () => {
     return isNaN(valorNumerico) ? 0 : valorNumerico
   }
 
-  // Ao montar, busca as planilhas das duas pastas
+  // Ao montar, busca os projetos
   useEffect(() => {
-    const fetchPlanilhas = async () => {
-      try {
-        setLoadingPlanilhas(true)
-
-        // 1) Busca planilhas de pagamentos atuais
-        const resAtuais = await ApiBase.get(`/google/drive/${FOLDER_ATUAL_ID}`)
-        const listaAtuais = (resAtuais.data || []).filter((plan) => !IGNORAR_NOMES.includes(plan.name))
-        setPlanilhasAtuais(listaAtuais)
-
-        // 2) Busca planilhas de histórico de pagamentos
-        const resHistorico = await ApiBase.get(`/google/drive/${FOLDER_HISTORICO_ID}`)
-        const listaHistorico = (resHistorico.data || []).filter((plan) => !IGNORAR_NOMES.includes(plan.name))
-        setPlanilhasHistorico(listaHistorico)
-
-        // Se houver ao menos 1 planilha atual, define como selecionada por padrão
-        if (listaAtuais.length > 0) {
-          const primeiraPlanilha = listaAtuais[0]
-          setSelectedSpreadsheetId(primeiraPlanilha.id)
-          carregarDadosPlanilha(primeiraPlanilha.id)
-        }
-      } catch (error) {
-        console.error("Erro ao listar planilhas:", error)
-      } finally {
-        setLoadingPlanilhas(false)
-      }
-    }
-
-    fetchPlanilhas()
+    fetchProjetos()
   }, [])
 
-  // Função para buscar os dados do range 'pagamento_semanal' da planilha selecionada
-  const carregarDadosPlanilha = async (spreadsheetId) => {
-    if (!spreadsheetId) return
+  // Quando um projeto é selecionado, busca seus pagamentos
+  useEffect(() => {
+    if (projetoSelecionado) {
+      fetchPagamentosProjeto(projetoSelecionado)
+    }
+  }, [projetoSelecionado])
+
+  const fetchProjetos = async () => {
+    setLoadingProjetos(true)
     try {
-      setLoadingDados(true)
+      const response = await PagamentosApi.listarPagamentos(1, 50)
+      setProjetos(response.pagamentos || [])
 
-      // Faz a requisição para /google/sheets/data
-      const res = await ApiBase.post("/google/sheets/data", {
-        data: {
-          spreadsheetId,
-          range: "pagamento_semanal",
-        },
-      })
-
-      const rows = res.data.values || []
-      console.log("Retorno da planilha:", rows)
-
-      // Verifica se há pelo menos 2 linhas:
-      // - Linha 0 (título extra, ex.: "Mão de Obra")
-      // - Linha 1 (cabeçalho real)
-      if (rows.length < 2) {
-        setPagamentos([])
-        setLoadingDados(false)
-        return
+      // Se houver projetos, seleciona o primeiro por padrão
+      if (response.pagamentos && response.pagamentos.length > 0) {
+        setProjetoSelecionado(response.pagamentos[0]._id)
       }
-
-      // A linha 1 (rows[1]) é o cabeçalho real
-      const headerRow = rows[1]
-
-      // Mapeia cada coluna ao índice correspondente
-      const indices = {
-        nome: headerRow.indexOf("Nome"),
-        funcao: headerRow.indexOf("Função"),
-        tipoContratacao: headerRow.indexOf("Tipo de Contratação"),
-        valorDevido: headerRow.indexOf("Valor Devido"),
-        inicioContrato: headerRow.indexOf("Início contrato"),
-        fimContrato: headerRow.indexOf("Fim contrato"),
-        chavePix: headerRow.indexOf("CHAVE PIX"),
-        nomePix: headerRow.indexOf("NOME DO PIX"),
-        qualificacaoTecnica: headerRow.indexOf("QUALIFICAÇÃO TECNICA"),
-        valorVT: headerRow.indexOf("VALOR DO VT"),
-        valorAlimentacao: headerRow.indexOf("VALOR DA ALIMENTAÇÃO"),
-        vtAlimentacaoSemana: headerRow.indexOf("VALOR DO VT MAIS ALIMENT NA SEMANA"),
-        vale: headerRow.indexOf("VALE"),
-        totalReceber: headerRow.indexOf("TOTAL A RECEBER"),
-        status: headerRow.indexOf("Status:"),
-      }
-
-      // As linhas de dados começam em rows[2]
-      const dataRows = rows.slice(2)
-
-      // Monta a lista de pagamentos
-      const parsedPagamentos = dataRows.map((row) => ({
-        nome: row[indices.nome] || "",
-        funcao: row[indices.funcao] || "",
-        tipoContratacao: row[indices.tipoContratacao] || "",
-        valorDevido: row[indices.valorDevido] || "",
-        inicioContrato: row[indices.inicioContrato] || "",
-        fimContrato: row[indices.fimContrato] || "",
-        chavePix: row[indices.chavePix] || "",
-        nomePix: row[indices.nomePix] || "",
-        qualificacaoTecnica: row[indices.qualificacaoTecnica] || "",
-        valorVT: row[indices.valorVT] || "",
-        valorAlimentacao: row[indices.valorAlimentacao] || "",
-        vtAlimentacaoSemana: row[indices.vtAlimentacaoSemana] || "",
-        vale: row[indices.vale] || "",
-        totalReceber: row[indices.totalReceber] || "",
-        status: row[indices.status] || "",
-      }))
-
-      setPagamentos(parsedPagamentos)
-
-      // Calcular estatísticas
-      calcularEstatisticas(parsedPagamentos)
     } catch (error) {
-      console.error("Erro ao carregar dados da planilha:", error)
-      setPagamentos([])
+      console.error("Erro ao buscar projetos:", error)
+      setError("Erro ao carregar projetos")
     } finally {
-      setLoadingDados(false)
+      setLoadingProjetos(false)
+    }
+  }
+
+  const fetchPagamentosProjeto = async (projetoId) => {
+    setLoadingPagamentos(true)
+    try {
+      const response = await PagamentosApi.buscarPagamento(projetoId)
+      const projeto = response.pagamento
+
+      if (projeto && projeto.pagamentosSemanais) {
+        setPagamentos(projeto.pagamentosSemanais)
+        calcularEstatisticas(projeto.pagamentosSemanais)
+      } else {
+        setPagamentos([])
+        calcularEstatisticas([])
+      }
+    } catch (error) {
+      console.error("Erro ao buscar pagamentos:", error)
+      setError("Erro ao carregar pagamentos do projeto")
+      setPagamentos([])
+      calcularEstatisticas([])
+    } finally {
+      setLoadingPagamentos(false)
     }
   }
 
@@ -194,16 +128,15 @@ const PagamentoCard = () => {
     let pagamentosPendentes = 0
 
     pagamentos.forEach((pagamento) => {
-      // Converter valor devido para número usando a função auxiliar
-      const valorNumerico = converterParaNumero(pagamento.valorDevido)
+      const valorTotal = pagamento.totalReceber || 0
 
-      totalDevido += valorNumerico
+      totalDevido += valorTotal
 
-      if (pagamento.status === "Pagamento Efetuado") {
-        totalPago += valorNumerico
+      if (pagamento.status === "pagamento efetuado") {
+        totalPago += valorTotal
         pagamentosPagos++
-      } else if (pagamento.status === "Pagar") {
-        totalPendente += valorNumerico
+      } else if (pagamento.status === "pagar") {
+        totalPendente += valorTotal
         pagamentosPendentes++
       }
     })
@@ -239,21 +172,26 @@ const PagamentoCard = () => {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Quando o usuário seleciona uma planilha no dropdown, carrega seus dados
-  const handleSelectPlanilha = (e) => {
-    const chosenId = e.target.value
-    setSelectedSpreadsheetId(chosenId)
-    carregarDadosPlanilha(chosenId)
+  // Marcar pagamento como efetuado
+  const handleMarcarPago = async (pagamentoId) => {
+    try {
+      await PagamentosApi.marcarPagamentoEfetuado(projetoSelecionado, pagamentoId)
+      setSuccess("Pagamento marcado como efetuado!")
+      fetchPagamentosProjeto(projetoSelecionado)
+      handleCloseModal()
+    } catch (error) {
+      setError("Erro ao marcar pagamento como efetuado")
+    }
   }
 
   // Retorna a classe (ou estilo) baseado no status
   const getStatusBadgeClass = (status) => {
-    if (status === "Pagar") {
-      return "bg-warning text-dark" // Amarelo
-    } else if (status === "Pagamento Efetuado") {
-      return "bg-success" // Verde
+    if (status === "pagar") {
+      return "warning"
+    } else if (status === "pagamento efetuado") {
+      return "success"
     }
-    return "bg-secondary" // Cinza (caso apareça algum outro status)
+    return "secondary"
   }
 
   // Formatar valor como moeda
@@ -261,7 +199,7 @@ const PagamentoCard = () => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
-    }).format(value)
+    }).format(value || 0)
   }
 
   // Obter a data atual formatada
@@ -280,147 +218,162 @@ const PagamentoCard = () => {
     alert("Funcionalidade de exportação será implementada em breve!")
   }
 
+  // Obter nome do projeto selecionado
+  const getNomeProjeto = () => {
+    const projeto = projetos.find((p) => p._id === projetoSelecionado)
+    return projeto ? projeto.obra.nome : "Projeto"
+  }
+
   return (
     <Container className="mt-4">
       <Row className="mb-4">
         <Col>
-          <h1 className="mb-2">Gestão de Pagamentos</h1>
+          <h1 className="mb-2">Gestão de Pagamentos Semanais</h1>
           <p className="text-muted">{getDataAtual()}</p>
         </Col>
       </Row>
 
-      {loadingPlanilhas ? (
+      {/* Alertas */}
+      {error && (
+        <Alert variant="danger" onClose={() => setError("")} dismissible>
+          {error}
+        </Alert>
+      )}
+
+      {success && (
+        <Alert variant="success" onClose={() => setSuccess("")} dismissible>
+          {success}
+        </Alert>
+      )}
+
+      {loadingProjetos ? (
         <div className="d-flex align-items-center justify-content-center p-5">
           <Spinner animation="border" variant="primary" className="me-2" />
-          <span>Carregando planilhas...</span>
+          <span>Carregando projetos...</span>
         </div>
       ) : (
         <>
+          {/* Seleção de Projeto */}
+          <Row className="mb-4">
+            <Col md={6}>
+              <Card className="shadow-sm border-0">
+                <Card.Body>
+                  <Card.Title className="d-flex align-items-center mb-3">
+                    <Briefcase className="me-2" size={20} />
+                    Selecionar Projeto
+                  </Card.Title>
+                  <FormSelect value={projetoSelecionado} onChange={(e) => setProjetoSelecionado(e.target.value)}>
+                    <option value="">Selecione um projeto...</option>
+                    {projetos.map((projeto) => (
+                      <option key={projeto._id} value={projeto._id}>
+                        {projeto.obra.nome}
+                      </option>
+                    ))}
+                  </FormSelect>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={6}>
+              <Card className="shadow-sm border-0">
+                <Card.Body>
+                  <Card.Title className="d-flex align-items-center mb-3">
+                    <FileText className="me-2" size={20} />
+                    Projeto Atual
+                  </Card.Title>
+                  <p className="mb-0">{projetoSelecionado ? getNomeProjeto() : "Nenhum projeto selecionado"}</p>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
+
           {/* Cards de resumo */}
-          <Row className="mb-4">
-            <Col lg={3} md={6} className="mb-3">
-              <Card className="h-100 shadow-sm border-0">
-                <Card.Body>
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="rounded-circle bg-primary bg-opacity-10 p-3 me-3">
-                      <DollarSign className="text-primary" size={24} />
+          {projetoSelecionado && (
+            <Row className="mb-4">
+              <Col lg={3} md={6} className="mb-3">
+                <Card className="h-100 shadow-sm border-0">
+                  <Card.Body>
+                    <div className="d-flex align-items-center mb-3">
+                      <div className="rounded-circle bg-primary bg-opacity-10 p-3 me-3">
+                        <DollarSign className="text-primary" size={24} />
+                      </div>
+                      <div>
+                        <h6 className="text-muted mb-0">Total Devido</h6>
+                        <h4 className="mb-0">{formatCurrency(estatisticas.totalDevido)}</h4>
+                      </div>
                     </div>
-                    <div>
-                      <h6 className="text-muted mb-0">Total Devido</h6>
-                      <h4 className="mb-0">{formatCurrency(estatisticas.totalDevido)}</h4>
-                    </div>
-                  </div>
-                  <ProgressBar
-                    now={estatisticas.percentualPago}
-                    variant="primary"
-                    className="mb-2"
-                    style={{ height: "8px" }}
-                  />
-                  <small className="text-muted">
-                    {estatisticas.percentualPago.toFixed(1)}% do valor total já foi pago
-                  </small>
-                </Card.Body>
-              </Card>
-            </Col>
-
-            <Col lg={3} md={6} className="mb-3">
-              <Card className="h-100 shadow-sm border-0">
-                <Card.Body>
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="rounded-circle bg-success bg-opacity-10 p-3 me-3">
-                      <CheckCircle className="text-success" size={24} />
-                    </div>
-                    <div>
-                      <h6 className="text-muted mb-0">Pagamentos Efetuados</h6>
-                      <h4 className="mb-0">{formatCurrency(estatisticas.totalPago)}</h4>
-                    </div>
-                  </div>
-                  <p className="text-muted mb-0">
-                    <small>{estatisticas.pagamentosPagos} pagamentos concluídos</small>
-                  </p>
-                </Card.Body>
-              </Card>
-            </Col>
-
-            <Col lg={3} md={6} className="mb-3">
-              <Card className="h-100 shadow-sm border-0">
-                <Card.Body>
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="rounded-circle bg-warning bg-opacity-10 p-3 me-3">
-                      <AlertCircle className="text-warning" size={24} />
-                    </div>
-                    <div>
-                      <h6 className="text-muted mb-0">Pagamentos Pendentes</h6>
-                      <h4 className="mb-0">{formatCurrency(estatisticas.totalPendente)}</h4>
-                    </div>
-                  </div>
-                  <p className="text-muted mb-0">
-                    <small>{estatisticas.pagamentosPendentes} pagamentos aguardando</small>
-                  </p>
-                </Card.Body>
-              </Card>
-            </Col>
-
-            <Col lg={3} md={6} className="mb-3">
-              <Card className="h-100 shadow-sm border-0">
-                <Card.Body>
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="rounded-circle bg-info bg-opacity-10 p-3 me-3">
-                      <FileText className="text-info" size={24} />
-                    </div>
-                    <div>
-                      <h6 className="text-muted mb-0">Total de Registros</h6>
-                      <h4 className="mb-0">{pagamentos.length}</h4>
-                    </div>
-                  </div>
-                  <p className="text-muted mb-0">
-                    <small>
-                      Média de {formatCurrency(estatisticas.totalDevido / (pagamentos.length || 1))} por registro
+                    <ProgressBar
+                      now={estatisticas.percentualPago}
+                      variant="primary"
+                      className="mb-2"
+                      style={{ height: "8px" }}
+                    />
+                    <small className="text-muted">
+                      {estatisticas.percentualPago.toFixed(1)}% do valor total já foi pago
                     </small>
-                  </p>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
+                  </Card.Body>
+                </Card>
+              </Col>
 
-          <Row className="mb-4">
-            <Col md={6}>
-              <Card className="shadow-sm border-0">
-                <Card.Body>
-                  <Card.Title className="d-flex align-items-center mb-3">
-                    <Calendar className="me-2" size={20} />
-                    Semana Atual
-                  </Card.Title>
-                  <FormSelect onChange={handleSelectPlanilha} value={selectedSpreadsheetId}>
-                    <option value="">Selecione uma planilha...</option>
-                    {planilhasAtuais.map((plan) => (
-                      <option key={plan.id} value={plan.id}>
-                        {plan.name}
-                      </option>
-                    ))}
-                  </FormSelect>
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col md={6}>
-              <Card className="shadow-sm border-0">
-                <Card.Body>
-                  <Card.Title className="d-flex align-items-center mb-3">
-                    <Clock className="me-2" size={20} />
-                    Histórico de Semanas
-                  </Card.Title>
-                  <FormSelect onChange={handleSelectPlanilha} value={selectedSpreadsheetId}>
-                    <option value="">Selecione uma semana anterior...</option>
-                    {planilhasHistorico.map((plan) => (
-                      <option key={plan.id} value={plan.id}>
-                        {plan.name}
-                      </option>
-                    ))}
-                  </FormSelect>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
+              <Col lg={3} md={6} className="mb-3">
+                <Card className="h-100 shadow-sm border-0">
+                  <Card.Body>
+                    <div className="d-flex align-items-center mb-3">
+                      <div className="rounded-circle bg-success bg-opacity-10 p-3 me-3">
+                        <CheckCircle className="text-success" size={24} />
+                      </div>
+                      <div>
+                        <h6 className="text-muted mb-0">Pagamentos Efetuados</h6>
+                        <h4 className="mb-0">{formatCurrency(estatisticas.totalPago)}</h4>
+                      </div>
+                    </div>
+                    <p className="text-muted mb-0">
+                      <small>{estatisticas.pagamentosPagos} pagamentos concluídos</small>
+                    </p>
+                  </Card.Body>
+                </Card>
+              </Col>
+
+              <Col lg={3} md={6} className="mb-3">
+                <Card className="h-100 shadow-sm border-0">
+                  <Card.Body>
+                    <div className="d-flex align-items-center mb-3">
+                      <div className="rounded-circle bg-warning bg-opacity-10 p-3 me-3">
+                        <AlertCircle className="text-warning" size={24} />
+                      </div>
+                      <div>
+                        <h6 className="text-muted mb-0">Pagamentos Pendentes</h6>
+                        <h4 className="mb-0">{formatCurrency(estatisticas.totalPendente)}</h4>
+                      </div>
+                    </div>
+                    <p className="text-muted mb-0">
+                      <small>{estatisticas.pagamentosPendentes} pagamentos aguardando</small>
+                    </p>
+                  </Card.Body>
+                </Card>
+              </Col>
+
+              <Col lg={3} md={6} className="mb-3">
+                <Card className="h-100 shadow-sm border-0">
+                  <Card.Body>
+                    <div className="d-flex align-items-center mb-3">
+                      <div className="rounded-circle bg-info bg-opacity-10 p-3 me-3">
+                        <FileText className="text-info" size={24} />
+                      </div>
+                      <div>
+                        <h6 className="text-muted mb-0">Total de Registros</h6>
+                        <h4 className="mb-0">{pagamentos.length}</h4>
+                      </div>
+                    </div>
+                    <p className="text-muted mb-0">
+                      <small>
+                        Média de {formatCurrency(estatisticas.totalDevido / (pagamentos.length || 1))} por registro
+                      </small>
+                    </p>
+                  </Card.Body>
+                </Card>
+              </Col>
+            </Row>
+          )}
 
           <Card className="shadow-sm border-0 mb-4">
             <Card.Header className="bg-white d-flex justify-content-between align-items-center">
@@ -437,48 +390,57 @@ const PagamentoCard = () => {
             </Card.Header>
 
             <Card.Body>
-              {loadingDados ? (
+              {loadingPagamentos ? (
                 <div className="d-flex align-items-center justify-content-center p-5">
                   <Spinner animation="border" variant="primary" className="me-2" />
-                  <span>Carregando dados...</span>
+                  <span>Carregando pagamentos...</span>
+                </div>
+              ) : !projetoSelecionado ? (
+                <div className="text-center p-5">
+                  <p className="text-muted">Selecione um projeto para visualizar os pagamentos.</p>
+                </div>
+              ) : pagamentos.length === 0 ? (
+                <div className="text-center p-5">
+                  <p className="text-muted">Nenhum pagamento encontrado para este projeto.</p>
                 </div>
               ) : (
                 <div style={{ maxHeight: "500px", overflowY: "auto" }}>
-                  {pagamentos.length === 0 ? (
-                    <div className="text-center p-5">
-                      <p className="text-muted">Nenhum registro encontrado.</p>
-                      <p className="text-muted small">Selecione uma planilha para visualizar os dados.</p>
-                    </div>
-                  ) : (
-                    <Table striped hover responsive>
-                      <thead className="bg-light">
-                        <tr>
-                          <th>Nome/Descrição</th>
-                          <th>Tipo</th>
-                          <th>Valor Devido</th>
-                          <th>Status</th>
-                          <th style={{ width: "120px" }}>Ações</th>
+                  <Table striped hover responsive>
+                    <thead className="bg-light">
+                      <tr>
+                        <th>Nome</th>
+                        <th>Função</th>
+                        <th>Tipo Contratação</th>
+                        <th>Valor a Pagar</th>
+                        <th>Total a Receber</th>
+                        <th>Semana/Ano</th>
+                        <th>Status</th>
+                        <th style={{ width: "120px" }}>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagamentos.map((pagamento, idx) => (
+                        <tr key={pagamento._id || idx}>
+                          <td>{pagamento.nome}</td>
+                          <td>{pagamento.funcao}</td>
+                          <td>{pagamento.tipoContratacao}</td>
+                          <td>{formatCurrency(pagamento.valorPagar)}</td>
+                          <td>{formatCurrency(pagamento.totalReceber)}</td>
+                          <td>
+                            {pagamento.semana}/{pagamento.ano}
+                          </td>
+                          <td>
+                            <Badge bg={getStatusBadgeClass(pagamento.status)}>{pagamento.status}</Badge>
+                          </td>
+                          <td>
+                            <Button variant="outline-primary" size="sm" onClick={() => handleShowModal(pagamento)}>
+                              Detalhes
+                            </Button>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {pagamentos.map((pagamento, idx) => (
-                          <tr key={idx}>
-                            <td>{pagamento.nome}</td>
-                            <td>{pagamento.funcao}</td>
-                            <td>{pagamento.valorDevido}</td>
-                            <td>
-                              <Badge className={`${getStatusBadgeClass(pagamento.status)}`}>{pagamento.status}</Badge>
-                            </td>
-                            <td>
-                              <Button variant="outline-primary" size="sm" onClick={() => handleShowModal(pagamento)}>
-                                Detalhes
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  )}
+                      ))}
+                    </tbody>
+                  </Table>
                 </div>
               )}
             </Card.Body>
@@ -507,9 +469,7 @@ const PagamentoCard = () => {
                         }
                       }
                       tiposContratacao[tipo].count++
-
-                      // Usar a função auxiliar para converter o valor
-                      tiposContratacao[tipo].totalDevido += converterParaNumero(pagamento.valorDevido)
+                      tiposContratacao[tipo].totalDevido += pagamento.totalReceber || 0
                     })
 
                     // Renderizar cards para cada tipo
@@ -549,49 +509,47 @@ const PagamentoCard = () => {
               <Col md={6}>
                 <h5 className="mb-3">Informações Gerais</h5>
                 <p>
-                  <strong>Nome/Descrição:</strong> {pagamentoSelecionado.nome}
+                  <strong>Nome:</strong> {pagamentoSelecionado.nome}
                 </p>
                 <p>
-                  <strong>Tipo:</strong> {pagamentoSelecionado.funcao}
+                  <strong>Função:</strong> {pagamentoSelecionado.funcao}
                 </p>
                 <p>
-                  <strong>Categoria:</strong> {pagamentoSelecionado.tipoContratacao}
+                  <strong>Tipo de Contratação:</strong> {pagamentoSelecionado.tipoContratacao}
                 </p>
                 <p>
-                  <strong>Qualificação/Detalhes:</strong> {pagamentoSelecionado.qualificacaoTecnica}
+                  <strong>Qualificação Técnica:</strong> {pagamentoSelecionado.qualificacaoTecnica}
                 </p>
                 <p>
-                  <strong>Início contrato/serviço:</strong> {pagamentoSelecionado.inicioContrato}
+                  <strong>Início do Contrato:</strong>{" "}
+                  {new Date(pagamentoSelecionado.dataInicio).toLocaleDateString("pt-BR")}
                 </p>
                 <p>
-                  <strong>Fim contrato/serviço:</strong> {pagamentoSelecionado.fimContrato}
+                  <strong>Fim do Contrato:</strong>{" "}
+                  {new Date(pagamentoSelecionado.dataFimContrato).toLocaleDateString("pt-BR")}
                 </p>
               </Col>
               <Col md={6}>
                 <h5 className="mb-3">Informações Financeiras</h5>
                 <p>
-                  <strong>Valor Devido:</strong> {pagamentoSelecionado.valorDevido}
+                  <strong>Valor a Pagar:</strong> {formatCurrency(pagamentoSelecionado.valorPagar)}
                 </p>
                 <p>
-                  <strong>Valor do VT:</strong> {pagamentoSelecionado.valorVT}
+                  <strong>Valor do VT:</strong> {formatCurrency(pagamentoSelecionado.valorVT)}
                 </p>
                 <p>
-                  <strong>Valor da Alimentação:</strong> {pagamentoSelecionado.valorAlimentacao}
+                  <strong>Valor da VA:</strong> {formatCurrency(pagamentoSelecionado.valorVA)}
                 </p>
                 <p>
-                  <strong>VT + Alimentação (semana):</strong> {pagamentoSelecionado.vtAlimentacaoSemana}
+                  <strong>Total a Receber:</strong>{" "}
+                  <span className="fw-bold">{formatCurrency(pagamentoSelecionado.totalReceber)}</span>
                 </p>
                 <p>
-                  <strong>Vale:</strong> {pagamentoSelecionado.vale}
-                </p>
-                <p>
-                  <strong>Total a Pagar:</strong> <span className="fw-bold">{pagamentoSelecionado.totalReceber}</span>
+                  <strong>Semana/Ano:</strong> {pagamentoSelecionado.semana}/{pagamentoSelecionado.ano}
                 </p>
                 <p>
                   <strong>Status:</strong>{" "}
-                  <Badge className={`${getStatusBadgeClass(pagamentoSelecionado.status)}`}>
-                    {pagamentoSelecionado.status}
-                  </Badge>
+                  <Badge bg={getStatusBadgeClass(pagamentoSelecionado.status)}>{pagamentoSelecionado.status}</Badge>
                 </p>
               </Col>
             </Row>
@@ -600,7 +558,7 @@ const PagamentoCard = () => {
 
             <h5 className="mb-3">Informações de Pagamento</h5>
             <p>
-              <strong>Nome do Beneficiário:</strong> {pagamentoSelecionado.nomePix}
+              <strong>Nome do Beneficiário:</strong> {pagamentoSelecionado.nomeChavePix}
             </p>
             <p>
               <strong>Chave PIX:</strong>
@@ -612,7 +570,7 @@ const PagamentoCard = () => {
                 overlay={<Tooltip id="tooltip-copy">{copied ? "Chave PIX copiada!" : "Clique para copiar"}</Tooltip>}
               >
                 <Button variant="outline-primary" onClick={() => handleCopyPix(pagamentoSelecionado.chavePix)}>
-                  Copiar
+                  <Copy size={16} />
                 </Button>
               </OverlayTrigger>
             </InputGroup>
@@ -621,7 +579,11 @@ const PagamentoCard = () => {
             <Button variant="secondary" onClick={handleCloseModal}>
               Fechar
             </Button>
-            {pagamentoSelecionado.status === "Pagar" && <Button variant="success">Marcar como Pago</Button>}
+            {pagamentoSelecionado.status === "pagar" && (
+              <Button variant="success" onClick={() => handleMarcarPago(pagamentoSelecionado._id)}>
+                Marcar como Pago
+              </Button>
+            )}
           </Modal.Footer>
         </Modal>
       )}

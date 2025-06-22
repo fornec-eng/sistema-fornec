@@ -1,290 +1,201 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Form, Button, Alert, Row, Col } from "react-bootstrap"
-import { Save, X } from "lucide-react"
-import apiService from "../../services/apiService"
+import { useState } from "react"
+import { Card, Form, Button, Alert } from "react-bootstrap"
+import { Plus } from "lucide-react"
+import ApiBase from "../../services/ApiBase"
 
-function MaterialForm({ onSubmit, onCancel, initialData = null }) {
-  const [formData, setFormData] = useState({
-    numeroNota: "",
-    data: "",
+const MaterialForm = ({ obraSelecionada, onItemAdded }) => {
+  const [currentItem, setCurrentItem] = useState({
+    nrNota: "",
+    descricao: "",
+    data: new Date().toISOString().split("T")[0],
     localCompra: "",
     valor: "",
     solicitante: "",
     formaPagamento: "pix",
-    statusPagamento: "pendente",
-    descricao: "",
-    observacoes: "",
-    obraId: "",
   })
+  const [isLoading, setIsLoading] = useState(false)
+  const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
-  const [obras, setObras] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-
-  useEffect(() => {
-    fetchObras()
-    if (initialData) {
-      setFormData({
-        ...initialData,
-        data: initialData.data ? new Date(initialData.data).toISOString().split("T")[0] : "",
-      })
-    }
-  }, [initialData])
-
-  const fetchObras = async () => {
-    try {
-      const response = await apiService.obras.getAll()
-      if (!response.error) {
-        setObras(response.obras || [])
-      }
-    } catch (error) {
-      console.error("Erro ao buscar obras:", error)
-    }
+  const showAlert = (message, variant = "danger") => {
+    setAlert({ show: true, message, variant })
+    setTimeout(() => setAlert({ show: false, message: "", variant: "" }), 5000)
   }
 
-  const handleChange = (event) => {
-    const { name, value } = event.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    setLoading(true)
-    setError("")
-
-    // Validações básicas
-    if (!formData.numeroNota.trim()) {
-      setError("Número da nota é obrigatório")
-      setLoading(false)
+  const addItem = async () => {
+    if (!obraSelecionada) {
+      showAlert("Selecione uma obra primeiro para adicionar materiais.")
       return
     }
 
-    if (!formData.data) {
-      setError("Data é obrigatória")
-      setLoading(false)
+    if (!currentItem.nrNota || !currentItem.descricao || !currentItem.valor || !currentItem.data) {
+      showAlert("Preencha todos os campos obrigatórios: Número da Nota, Descrição, Valor e Data.")
       return
     }
 
-    if (!formData.localCompra.trim()) {
-      setError("Local da compra é obrigatório")
-      setLoading(false)
-      return
-    }
-
-    if (!formData.valor || Number.parseFloat(formData.valor) <= 0) {
-      setError("Valor deve ser maior que zero")
-      setLoading(false)
-      return
-    }
-
-    if (!formData.solicitante.trim()) {
-      setError("Solicitante é obrigatório")
-      setLoading(false)
-      return
-    }
-
+    setIsLoading(true)
     try {
-      const dataToSubmit = {
-        ...formData,
-        valor: Number.parseFloat(formData.valor),
+      const gastoData = {
+        nrNota: currentItem.nrNota,
+        descricao: currentItem.descricao,
+        data: new Date(currentItem.data),
+        localCompra: currentItem.localCompra || "",
+        valor: Number.parseFloat(currentItem.valor) || 0,
+        solicitante: currentItem.solicitante || "",
+        formaPagamento: currentItem.formaPagamento,
       }
 
-      // Apenas chama o onSubmit passado como prop, não salva diretamente
-      await onSubmit(dataToSubmit)
+      const response = await ApiBase.post(`/pagamentos/${obraSelecionada}/gastos`, gastoData)
+
+      if (!response.data.error) {
+        showAlert("Material adicionado com sucesso!", "success")
+        setCurrentItem({
+          nrNota: "",
+          descricao: "",
+          data: new Date().toISOString().split("T")[0],
+          localCompra: "",
+          valor: "",
+          solicitante: "",
+          formaPagamento: "pix",
+        })
+        onItemAdded?.()
+      } else {
+        showAlert("Erro ao adicionar material: " + response.data.message)
+      }
     } catch (error) {
-      console.error("Erro ao salvar material:", error)
-      setError("Erro ao salvar material. Tente novamente.")
+      showAlert("Erro ao adicionar material: " + error.message)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleCancel = () => {
-    // Resetar formulário
-    setFormData({
-      numeroNota: "",
-      data: "",
-      localCompra: "",
-      valor: "",
-      solicitante: "",
-      formaPagamento: "pix",
-      statusPagamento: "pendente",
-      descricao: "",
-      observacoes: "",
-      obraId: "",
-    })
-    setError("")
-
-    // Chamar callback de cancelamento se fornecido
-    if (onCancel) {
-      onCancel()
+      setIsLoading(false)
     }
   }
 
   return (
-    <>
-      {error && (
-        <Alert variant="danger" className="mb-3">
-          {error}
+    <div className="space-y-4">
+      {alert.show && (
+        <Alert variant={alert.variant} dismissible onClose={() => setAlert({ show: false, message: "", variant: "" })}>
+          {alert.message}
         </Alert>
       )}
 
-      <Form onSubmit={handleSubmit}>
-        <Row>
-          <Col md={6}>
-            <Form.Group className="mb-3">
-              <Form.Label>Número da Nota *</Form.Label>
-              <Form.Control
-                type="text"
-                name="numeroNota"
-                value={formData.numeroNota}
-                onChange={handleChange}
-                placeholder="Ex: NF-001234"
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={6}>
-            <Form.Group className="mb-3">
-              <Form.Label>Data *</Form.Label>
-              <Form.Control type="date" name="data" value={formData.data} onChange={handleChange} required />
-            </Form.Group>
-          </Col>
-        </Row>
+      <Card>
+        <Card.Header>
+          <Card.Title className="d-flex align-items-center">
+            <Plus className="me-2" size={20} />
+            Adicionar Material/Equipamento
+          </Card.Title>
+          <small className="text-muted">Preencha os dados do material ou equipamento adquirido</small>
+        </Card.Header>
+        <Card.Body>
+          <Form>
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Número da Nota *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentItem.nrNota}
+                    onChange={(e) => setCurrentItem({ ...currentItem, nrNota: e.target.value })}
+                    placeholder="Ex: 12345"
+                  />
+                </Form.Group>
+              </div>
 
-        <Row>
-          <Col md={6}>
-            <Form.Group className="mb-3">
-              <Form.Label>Local da Compra *</Form.Label>
-              <Form.Control
-                type="text"
-                name="localCompra"
-                value={formData.localCompra}
-                onChange={handleChange}
-                placeholder="Ex: Loja de Materiais ABC"
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={6}>
-            <Form.Group className="mb-3">
-              <Form.Label>Valor *</Form.Label>
-              <Form.Control
-                type="number"
-                name="valor"
-                value={formData.valor}
-                onChange={handleChange}
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-                required
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Descrição *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentItem.descricao}
+                    onChange={(e) => setCurrentItem({ ...currentItem, descricao: e.target.value })}
+                    placeholder="Nome do item"
+                  />
+                </Form.Group>
+              </div>
+            </div>
 
-        <Row>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Solicitante *</Form.Label>
-              <Form.Control
-                type="text"
-                name="solicitante"
-                value={formData.solicitante}
-                onChange={handleChange}
-                placeholder="Nome do solicitante"
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Forma de Pagamento *</Form.Label>
-              <Form.Select name="formaPagamento" value={formData.formaPagamento} onChange={handleChange} required>
-                <option value="pix">PIX</option>
-                <option value="transferencia">Transferência</option>
-                <option value="avista">À Vista</option>
-                <option value="cartao">Cartão</option>
-                <option value="boleto">Boleto</option>
-                <option value="cheque">Cheque</option>
-                <option value="outro">Outro</option>
-              </Form.Select>
-            </Form.Group>
-          </Col>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Status do Pagamento *</Form.Label>
-              <Form.Select name="statusPagamento" value={formData.statusPagamento} onChange={handleChange} required>
-                <option value="pendente">Pendente</option>
-                <option value="efetuado">Efetuado</option>
-                <option value="em_processamento">Em Processamento</option>
-                <option value="cancelado">Cancelado</option>
-                <option value="atrasado">Atrasado</option>
-              </Form.Select>
-            </Form.Group>
-          </Col>
-        </Row>
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Local de Compra</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentItem.localCompra}
+                    onChange={(e) => setCurrentItem({ ...currentItem, localCompra: e.target.value })}
+                    placeholder="Nome da loja/fornecedor"
+                  />
+                </Form.Group>
+              </div>
 
-        <Form.Group className="mb-3">
-          <Form.Label>Obra</Form.Label>
-          <Form.Select name="obraId" value={formData.obraId} onChange={handleChange}>
-            <option value="">Selecione uma obra (opcional)</option>
-            {obras.map((obra) => (
-              <option key={obra._id} value={obra._id}>
-                {obra.nome}
-              </option>
-            ))}
-          </Form.Select>
-        </Form.Group>
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Valor *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    value={currentItem.valor}
+                    onChange={(e) => setCurrentItem({ ...currentItem, valor: e.target.value })}
+                    placeholder="0,00"
+                  />
+                </Form.Group>
+              </div>
+            </div>
 
-        <Form.Group className="mb-3">
-          <Form.Label>Descrição</Form.Label>
-          <Form.Control
-            as="textarea"
-            rows={2}
-            name="descricao"
-            value={formData.descricao}
-            onChange={handleChange}
-            placeholder="Descrição dos materiais comprados"
-          />
-        </Form.Group>
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Solicitante</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentItem.solicitante}
+                    onChange={(e) => setCurrentItem({ ...currentItem, solicitante: e.target.value })}
+                    placeholder="Nome do solicitante"
+                  />
+                </Form.Group>
+              </div>
 
-        <Form.Group className="mb-3">
-          <Form.Label>Observações</Form.Label>
-          <Form.Control
-            as="textarea"
-            rows={2}
-            name="observacoes"
-            value={formData.observacoes}
-            onChange={handleChange}
-            placeholder="Observações adicionais"
-          />
-        </Form.Group>
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Forma de Pagamento</Form.Label>
+                  <Form.Select
+                    value={currentItem.formaPagamento}
+                    onChange={(e) => setCurrentItem({ ...currentItem, formaPagamento: e.target.value })}
+                  >
+                    <option value="pix">PIX</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="avista">À Vista</option>
+                    <option value="cartao">Cartão</option>
+                    <option value="boleto">Boleto</option>
+                    <option value="outro">Outro</option>
+                  </Form.Select>
+                </Form.Group>
+              </div>
+            </div>
 
-        <div className="d-flex gap-2 mt-4">
-          <Button type="submit" variant="primary" disabled={loading} className="d-flex align-items-center">
-            <Save size={16} className="me-2" />
-            {loading ? "Salvando..." : initialData ? "Atualizar" : "Adicionar Material"}
-          </Button>
+            <div className="mb-3">
+              <Form.Group>
+                <Form.Label>Data da Compra *</Form.Label>
+                <Form.Control
+                  type="date"
+                  value={currentItem.data}
+                  onChange={(e) => setCurrentItem({ ...currentItem, data: e.target.value })}
+                />
+              </Form.Group>
+            </div>
 
-          <Button
-            type="button"
-            variant="outline-secondary"
-            onClick={handleCancel}
-            disabled={loading}
-            className="d-flex align-items-center"
-          >
-            <X size={16} className="me-2" />
-            Cancelar
-          </Button>
-        </div>
-      </Form>
-    </>
+            <Button
+              variant="primary"
+              onClick={addItem}
+              disabled={isLoading}
+              className="w-100 d-flex align-items-center justify-content-center"
+            >
+              <Plus size={16} className="me-2" />
+              {isLoading ? "Adicionando..." : "Adicionar Item"}
+            </Button>
+          </Form>
+        </Card.Body>
+      </Card>
+    </div>
   )
 }
 

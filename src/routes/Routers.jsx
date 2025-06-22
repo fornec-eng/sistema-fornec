@@ -14,6 +14,8 @@ import Inventario from "../pages/inventario";
 import Usuarios from "../pages/usuarios";
 import Pagamento_semanal from "../pages/pagamento_semanal";
 import Obras_ativas from "../pages/obras_ativas";
+import GestaoPagamentos from "../pages/GestaoPagamentos";
+import AdicionarPagamentos from "../pages/adicionar-pagamentos";
 
 const Routers = () => {
   return (
@@ -36,11 +38,15 @@ const Routers = () => {
             </Route>  
             <Route path="/pagamento_semanal" element={<PrivateRoute />} >
                 <Route path="/pagamento_semanal" element={<Pagamento_semanal />} />
-            </Route>        
+            </Route>
+            <Route path="/adicionar-pagamentos" element={<PrivateRoute />} >
+                <Route path="/adicionar-pagamentos" element={<AdicionarPagamentos />} />
+            </Route>          
 
             <Route path="/inventario" element={<Inventario />} />   
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
+            <Route path="/gestao-pagamentos" element={<GestaoPagamentos />} />
 
             {/* Nova rota para o dashboard, recebendo o ID da obra */}
             <Route path="/dashboard/:id" element={<PrivateRoute />}>

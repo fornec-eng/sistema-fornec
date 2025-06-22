@@ -1,323 +1,236 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Form, Button, Alert, Row, Col } from "react-bootstrap"
-import { Save, X } from "lucide-react"
-import apiService from "../../services/apiService"
+import { useState } from "react"
+import { Card, Form, Button, Alert } from "react-bootstrap"
+import { Plus } from "lucide-react"
+import ApiBase from "../../services/ApiBase"
 
-function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
-  const [formData, setFormData] = useState({
+const MaoObraForm = ({ obraSelecionada, onItemAdded }) => {
+  const [currentFuncionario, setCurrentFuncionario] = useState({
     nome: "",
     funcao: "",
-    tipoContratacao: "",
-    valor: "",
-    inicioContrato: "",
-    fimContrato: "",
-    diaPagamento: "",
-    statusPagamento: "pendente",
-    obraId: "",
-    observacoes: "",
+    dataInicio: new Date().toISOString().split("T")[0],
+    dataFim: new Date().toISOString().split("T")[0],
+    contaBancaria: "",
+    valorTotal: "",
+    numeroParcelas: 1,
+    dataPagamento: new Date().toISOString().split("T")[0],
+    statusPagamento: "previsto",
   })
+  const [isLoading, setIsLoading] = useState(false)
+  const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
-  const [obras, setObras] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-
-  useEffect(() => {
-    fetchObras()
-    if (initialData) {
-      setFormData({
-        ...initialData,
-        inicioContrato: initialData.inicioContrato
-          ? new Date(initialData.inicioContrato).toISOString().split("T")[0]
-          : "",
-        fimContrato: initialData.fimContrato ? new Date(initialData.fimContrato).toISOString().split("T")[0] : "",
-      })
-    }
-  }, [initialData])
-
-  const fetchObras = async () => {
-    try {
-      const response = await apiService.obras.getAll()
-      if (!response.error) {
-        setObras(response.obras || [])
-      }
-    } catch (error) {
-      console.error("Erro ao buscar obras:", error)
-    }
+  const showAlert = (message, variant = "danger") => {
+    setAlert({ show: true, message, variant })
+    setTimeout(() => setAlert({ show: false, message: "", variant: "" }), 5000)
   }
 
-  const handleChange = (event) => {
-    const { name, value } = event.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    setLoading(true)
-    setError("")
-
-    // Validações básicas
-    if (!formData.nome.trim()) {
-      setError("Nome do funcionário é obrigatório")
-      setLoading(false)
-      return
-    }
-
-    if (!formData.funcao.trim()) {
-      setError("Função é obrigatória")
-      setLoading(false)
-      return
-    }
-
-    if (!formData.tipoContratacao) {
-      setError("Tipo de contratação é obrigatório")
-      setLoading(false)
-      return
-    }
-
-    if (!formData.valor || Number.parseFloat(formData.valor) <= 0) {
-      setError("Valor deve ser maior que zero")
-      setLoading(false)
-      return
-    }
-
-    if (!formData.inicioContrato) {
-      setError("Data de início do contrato é obrigatória")
-      setLoading(false)
-      return
-    }
-
-    if (!formData.fimContrato) {
-      setError("Data de fim do contrato é obrigatória")
-      setLoading(false)
+  const addFuncionario = async () => {
+    if (!obraSelecionada) {
+      showAlert("Selecione uma obra primeiro para adicionar contratos.")
       return
     }
 
     if (
-      !formData.diaPagamento ||
-      Number.parseInt(formData.diaPagamento) < 1 ||
-      Number.parseInt(formData.diaPagamento) > 31
+      !currentFuncionario.nome ||
+      !currentFuncionario.funcao ||
+      !currentFuncionario.valorTotal ||
+      !currentFuncionario.dataInicio ||
+      !currentFuncionario.dataFim ||
+      !currentFuncionario.contaBancaria ||
+      !currentFuncionario.dataPagamento
     ) {
-      setError("Dia do pagamento deve ser entre 1 e 31")
-      setLoading(false)
+      showAlert("Preencha todos os campos obrigatórios.")
       return
     }
 
-    if (new Date(formData.fimContrato) <= new Date(formData.inicioContrato)) {
-      setError("Data de fim deve ser posterior à data de início")
-      setLoading(false)
-      return
-    }
-
+    setIsLoading(true)
     try {
-      const dataToSubmit = {
-        ...formData,
-        valor: Number.parseFloat(formData.valor),
-        diaPagamento: Number.parseInt(formData.diaPagamento),
+      const contratoData = {
+        nome: currentFuncionario.nome,
+        funcao: currentFuncionario.funcao,
+        dataInicio: new Date(currentFuncionario.dataInicio),
+        dataFim: new Date(currentFuncionario.dataFim),
+        contaBancaria: currentFuncionario.contaBancaria,
+        valorTotal: Number.parseFloat(currentFuncionario.valorTotal) || 0,
+        numeroParcelas: Number.parseInt(currentFuncionario.numeroParcelas) || 1,
+        dataPagamento: new Date(currentFuncionario.dataPagamento),
+        statusPagamento: currentFuncionario.statusPagamento,
       }
 
-      // Apenas chama o onSubmit passado como prop, não salva diretamente
-      await onSubmit(dataToSubmit)
+      const response = await ApiBase.post(`/pagamentos/${obraSelecionada}/contratos`, contratoData)
+
+      if (!response.data.error) {
+        showAlert("Contrato adicionado com sucesso!", "success")
+        setCurrentFuncionario({
+          nome: "",
+          funcao: "",
+          dataInicio: new Date().toISOString().split("T")[0],
+          dataFim: new Date().toISOString().split("T")[0],
+          contaBancaria: "",
+          valorTotal: "",
+          numeroParcelas: 1,
+          dataPagamento: new Date().toISOString().split("T")[0],
+          statusPagamento: "previsto",
+        })
+        onItemAdded?.()
+      } else {
+        showAlert("Erro ao adicionar contrato: " + response.data.message)
+      }
     } catch (error) {
-      console.error("Erro ao salvar mão de obra:", error)
-      setError("Erro ao salvar mão de obra. Tente novamente.")
+      showAlert("Erro ao adicionar contrato: " + error.message)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleCancel = () => {
-    // Resetar formulário
-    setFormData({
-      nome: "",
-      funcao: "",
-      tipoContratacao: "",
-      valor: "",
-      inicioContrato: "",
-      fimContrato: "",
-      diaPagamento: "",
-      statusPagamento: "pendente",
-      obraId: "",
-      observacoes: "",
-    })
-    setError("")
-
-    // Chamar callback de cancelamento se fornecido
-    if (onCancel) {
-      onCancel()
+      setIsLoading(false)
     }
   }
 
   return (
-    <>
-      {error && (
-        <Alert variant="danger" className="mb-3">
-          {error}
+    <div className="space-y-4">
+      {alert.show && (
+        <Alert variant={alert.variant} dismissible onClose={() => setAlert({ show: false, message: "", variant: "" })}>
+          {alert.message}
         </Alert>
       )}
 
-      <Form onSubmit={handleSubmit}>
-        <Row>
-          <Col md={6}>
-            <Form.Group className="mb-3">
-              <Form.Label>Nome do Funcionário *</Form.Label>
-              <Form.Control
-                type="text"
-                name="nome"
-                value={formData.nome}
-                onChange={handleChange}
-                placeholder="Nome completo"
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={6}>
-            <Form.Group className="mb-3">
-              <Form.Label>Função *</Form.Label>
-              <Form.Control
-                type="text"
-                name="funcao"
-                value={formData.funcao}
-                onChange={handleChange}
-                placeholder="Ex: Pedreiro, Eletricista, Encanador"
-                required
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+      <Card>
+        <Card.Header>
+          <Card.Title className="d-flex align-items-center">
+            <Plus className="me-2" size={20} />
+            Adicionar Funcionário/Contrato
+          </Card.Title>
+          <small className="text-muted">Registre informações de mão de obra e contratos</small>
+        </Card.Header>
+        <Card.Body>
+          <Form>
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Nome *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentFuncionario.nome}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, nome: e.target.value })}
+                    placeholder="Nome completo"
+                  />
+                </Form.Group>
+              </div>
 
-        <Row>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Tipo de Contratação *</Form.Label>
-              <Form.Select name="tipoContratacao" value={formData.tipoContratacao} onChange={handleChange} required>
-                <option value="">Selecione...</option>
-                <option value="clt">CLT</option>
-                <option value="pj">PJ</option>
-                <option value="diaria">Diária</option>
-                <option value="empreitada">Empreitada</option>
-                <option value="temporario">Temporário</option>
-              </Form.Select>
-            </Form.Group>
-          </Col>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Valor *</Form.Label>
-              <Form.Control
-                type="number"
-                name="valor"
-                value={formData.valor}
-                onChange={handleChange}
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Status do Pagamento *</Form.Label>
-              <Form.Select name="statusPagamento" value={formData.statusPagamento} onChange={handleChange} required>
-                <option value="pendente">Pendente</option>
-                <option value="efetuado">Efetuado</option>
-                <option value="em_processamento">Em Processamento</option>
-                <option value="cancelado">Cancelado</option>
-                <option value="atrasado">Atrasado</option>
-              </Form.Select>
-            </Form.Group>
-          </Col>
-        </Row>
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Função *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentFuncionario.funcao}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, funcao: e.target.value })}
+                    placeholder="Ex: Pedreiro, Eletricista"
+                  />
+                </Form.Group>
+              </div>
+            </div>
 
-        <Row>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Início do Contrato *</Form.Label>
-              <Form.Control
-                type="date"
-                name="inicioContrato"
-                value={formData.inicioContrato}
-                onChange={handleChange}
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Fim do Contrato *</Form.Label>
-              <Form.Control
-                type="date"
-                name="fimContrato"
-                value={formData.fimContrato}
-                onChange={handleChange}
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Dia do Pagamento *</Form.Label>
-              <Form.Control
-                type="number"
-                name="diaPagamento"
-                value={formData.diaPagamento}
-                onChange={handleChange}
-                placeholder="1-31"
-                min="1"
-                max="31"
-                required
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Data de Início *</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={currentFuncionario.dataInicio}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, dataInicio: e.target.value })}
+                  />
+                </Form.Group>
+              </div>
 
-        <Form.Group className="mb-3">
-          <Form.Label>Obra</Form.Label>
-          <Form.Select name="obraId" value={formData.obraId} onChange={handleChange}>
-            <option value="">Selecione uma obra (opcional)</option>
-            {obras.map((obra) => (
-              <option key={obra._id} value={obra._id}>
-                {obra.nome}
-              </option>
-            ))}
-          </Form.Select>
-        </Form.Group>
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Data de Fim do Contrato *</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={currentFuncionario.dataFim}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, dataFim: e.target.value })}
+                  />
+                </Form.Group>
+              </div>
+            </div>
 
-        <Form.Group className="mb-3">
-          <Form.Label>Observações</Form.Label>
-          <Form.Control
-            as="textarea"
-            rows={2}
-            name="observacoes"
-            value={formData.observacoes}
-            onChange={handleChange}
-            placeholder="Observações sobre o contrato"
-          />
-        </Form.Group>
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>PIX/Conta *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentFuncionario.contaBancaria}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, contaBancaria: e.target.value })}
+                    placeholder="Chave PIX ou dados da conta"
+                  />
+                </Form.Group>
+              </div>
 
-        <div className="d-flex gap-2 mt-4">
-          <Button type="submit" variant="primary" disabled={loading} className="d-flex align-items-center">
-            <Save size={16} className="me-2" />
-            {loading ? "Salvando..." : initialData ? "Atualizar" : "Adicionar Mão de Obra"}
-          </Button>
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Valor a Pagar *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    value={currentFuncionario.valorTotal}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, valorTotal: e.target.value })}
+                    placeholder="0,00"
+                  />
+                </Form.Group>
+              </div>
+            </div>
 
-          <Button
-            type="button"
-            variant="outline-secondary"
-            onClick={handleCancel}
-            disabled={loading}
-            className="d-flex align-items-center"
-          >
-            <X size={16} className="me-2" />
-            Cancelar
-          </Button>
-        </div>
-      </Form>
-    </>
+            <div className="row mb-3">
+              <div className="col-md-4">
+                <Form.Group>
+                  <Form.Label>Status *</Form.Label>
+                  <Form.Select
+                    value={currentFuncionario.statusPagamento}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, statusPagamento: e.target.value })}
+                  >
+                    <option value="pago">Pago</option>
+                    <option value="previsto">Previsto</option>
+                    <option value="em atraso">Em Atraso</option>
+                  </Form.Select>
+                </Form.Group>
+              </div>
+
+              <div className="col-md-4">
+                <Form.Group>
+                  <Form.Label>Número de Parcelas</Form.Label>
+                  <Form.Control
+                    type="number"
+                    value={currentFuncionario.numeroParcelas}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, numeroParcelas: e.target.value })}
+                    min="1"
+                  />
+                </Form.Group>
+              </div>
+
+              <div className="col-md-4">
+                <Form.Group>
+                  <Form.Label>Data de Pagamento *</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={currentFuncionario.dataPagamento}
+                    onChange={(e) => setCurrentFuncionario({ ...currentFuncionario, dataPagamento: e.target.value })}
+                  />
+                </Form.Group>
+              </div>
+            </div>
+
+            <Button
+              variant="primary"
+              onClick={addFuncionario}
+              disabled={isLoading}
+              className="w-100 d-flex align-items-center justify-content-center"
+            >
+              <Plus size={16} className="me-2" />
+              {isLoading ? "Adicionando..." : "Adicionar Funcionário"}
+            </Button>
+          </Form>
+        </Card.Body>
+      </Card>
+    </div>
   )
 }
 

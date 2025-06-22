@@ -1,338 +1,341 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Container, Row, Col, Card, Table, Button, Form, Spinner, Alert, Badge } from "react-bootstrap"
-import { ArrowLeft, CheckCircle, Clock, DollarSign, Filter, Calendar } from "lucide-react"
-import { useNavigate } from "react-router-dom"
-import apiService from "../services/apiService"
+import { useState } from "react"
+import { Card, Form, Button, Alert } from "react-bootstrap"
+import { Plus } from "lucide-react"
+import ApiBase from "../../services/ApiBase"
 
-const PagamentoSemanal = () => {
-  const navigate = useNavigate()
-  const [todosPagamentos, setTodosPagamentos] = useState([])
-  const [pagamentosFiltrados, setPagamentosFiltrados] = useState([])
-  const [loading, setLoading] = useState(true)
+const PagamentoSemanalForm = ({ obraSelecionada, onItemAdded }) => {
+  const [currentPagamento, setCurrentPagamento] = useState({
+    nome: "",
+    funcao: "",
+    dataInicio: new Date().toISOString().split("T")[0],
+    dataFimContrato: new Date().toISOString().split("T")[0],
+    tipoContratacao: "",
+    valorPagar: "",
+    chavePix: "",
+    nomeChavePix: "",
+    qualificacaoTecnica: "",
+    valorVT: 0,
+    valorVA: 0,
+    status: "pagar",
+    semana: 1,
+    ano: new Date().getFullYear(),
+  })
+  const [isLoading, setIsLoading] = useState(false)
   const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
-  // Filtros
-  const [filtroObra, setFiltroObra] = useState("todos")
-  const [filtroStatus, setFiltroStatus] = useState("todos")
-  const [obras, setObras] = useState([])
-
-  const showAlert = (message, variant = "success", duration = 5000) => {
+  const showAlert = (message, variant = "danger") => {
     setAlert({ show: true, message, variant })
-    setTimeout(() => setAlert({ show: false, message: "", variant: "" }), duration)
+    setTimeout(() => setAlert({ show: false, message: "", variant: "" }), 5000)
   }
 
-  // Função para obter o início da semana (segunda-feira)
-  const getInicioSemana = (data = new Date()) => {
-    const d = new Date(data)
-    const day = d.getDay()
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Ajusta para segunda-feira
-    const inicioSemana = new Date(d.setDate(diff))
-    inicioSemana.setHours(0, 0, 0, 0)
-    return inicioSemana
-  }
+  const addPagamento = async () => {
+    if (!obraSelecionada) {
+      showAlert("Selecione uma obra primeiro para adicionar pagamentos semanais.")
+      return
+    }
 
-  // Função para obter o fim da semana (domingo)
-  const getFimSemana = (data = new Date()) => {
-    const inicioSemana = getInicioSemana(data)
-    const fimSemana = new Date(inicioSemana)
-    fimSemana.setDate(inicioSemana.getDate() + 6)
-    fimSemana.setHours(23, 59, 59, 999)
-    return fimSemana
-  }
+    if (
+      !currentPagamento.nome ||
+      !currentPagamento.funcao ||
+      !currentPagamento.valorPagar ||
+      !currentPagamento.chavePix ||
+      !currentPagamento.nomeChavePix ||
+      !currentPagamento.qualificacaoTecnica ||
+      !currentPagamento.tipoContratacao
+    ) {
+      showAlert("Preencha todos os campos obrigatórios.")
+      return
+    }
 
-  useEffect(() => {
-    fetchTodosPagamentos()
-  }, [])
-
-  useEffect(() => {
-    aplicarFiltros()
-  }, [todosPagamentos, filtroObra, filtroStatus])
-
-  const fetchTodosPagamentos = async () => {
-    setLoading(true)
-
+    setIsLoading(true)
     try {
-      const response = await apiService.buscarTodosPagamentosSemanais()
+      const valorVA = Number.parseFloat(currentPagamento.valorVA) || 0
+      const valorVT = Number.parseFloat(currentPagamento.valorVT) || 0
+      const valorPagar = Number.parseFloat(currentPagamento.valorPagar) || 0
 
-      if (!response.error) {
-        const pagamentos = response.pagamentos || []
+      const pagamentoData = {
+        nome: currentPagamento.nome,
+        funcao: currentPagamento.funcao,
+        dataInicio: new Date(currentPagamento.dataInicio),
+        dataFimContrato: new Date(currentPagamento.dataFimContrato),
+        tipoContratacao: currentPagamento.tipoContratacao,
+        valorPagar: valorPagar,
+        chavePix: currentPagamento.chavePix,
+        nomeChavePix: currentPagamento.nomeChavePix,
+        qualificacaoTecnica: currentPagamento.qualificacaoTecnica,
+        valorVT: valorVT,
+        valorVA: valorVA,
+        valorVAVT: valorVA + valorVT,
+        totalReceber: valorPagar + valorVA + valorVT,
+        status: currentPagamento.status,
+        semana: Number.parseInt(currentPagamento.semana),
+        ano: Number.parseInt(currentPagamento.ano),
+      }
 
-        // Filtrar apenas pagamentos da semana atual
-        const inicioSemana = getInicioSemana()
-        const fimSemana = getFimSemana()
+      const response = await ApiBase.post(`/pagamentos/${obraSelecionada}/pagamentos-semanais`, pagamentoData)
 
-        const pagamentosSemanaAtual = pagamentos.filter((pagamento) => {
-          // Verificar se tem data de pagamento definida
-          if (!pagamento.dataPagamento && !pagamento.dataVencimento) {
-            return true // Incluir pagamentos sem data específica
-          }
-
-          const dataPagamento = new Date(pagamento.dataPagamento || pagamento.dataVencimento)
-          return dataPagamento >= inicioSemana && dataPagamento <= fimSemana
+      if (!response.data.error) {
+        showAlert("Pagamento semanal adicionado com sucesso!", "success")
+        setCurrentPagamento({
+          nome: "",
+          funcao: "",
+          dataInicio: new Date().toISOString().split("T")[0],
+          dataFimContrato: new Date().toISOString().split("T")[0],
+          tipoContratacao: "",
+          valorPagar: "",
+          chavePix: "",
+          nomeChavePix: "",
+          qualificacaoTecnica: "",
+          valorVT: 0,
+          valorVA: 0,
+          status: "pagar",
+          semana: 1,
+          ano: new Date().getFullYear(),
         })
-
-        setTodosPagamentos(pagamentosSemanaAtual)
-
-        // Extrair obras únicas para o filtro
-        const obrasUnicas = [...new Set(pagamentosSemanaAtual.map((p) => p.obraNome))]
-          .filter(Boolean)
-          .map((nome) => ({ nome }))
-        setObras(obrasUnicas)
+        onItemAdded?.()
       } else {
-        showAlert("Erro ao carregar pagamentos", "danger")
+        showAlert("Erro ao adicionar pagamento semanal: " + response.data.message)
       }
     } catch (error) {
-      console.error("Erro ao buscar pagamentos semanais:", error)
-      showAlert("Erro ao carregar pagamentos", "danger")
+      showAlert("Erro ao adicionar pagamento semanal: " + error.message)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const aplicarFiltros = () => {
-    let pagamentosFiltrados = [...todosPagamentos]
-
-    // Filtro por obra
-    if (filtroObra !== "todos") {
-      if (filtroObra === "fornec") {
-        pagamentosFiltrados = pagamentosFiltrados.filter((p) => p.tipoGasto === "fornec" || !p.obraNome)
-      } else {
-        pagamentosFiltrados = pagamentosFiltrados.filter((p) => p.obraNome === filtroObra)
-      }
-    }
-
-    // Filtro por status
-    if (filtroStatus !== "todos") {
-      if (filtroStatus === "pago") {
-        pagamentosFiltrados = pagamentosFiltrados.filter((p) => p.pago || p.status === "pago")
-      } else if (filtroStatus === "pendente") {
-        pagamentosFiltrados = pagamentosFiltrados.filter((p) => !p.pago && p.status !== "pago")
-      }
-    }
-
-    setPagamentosFiltrados(pagamentosFiltrados)
-  }
-
-  const marcarComoEfetuado = async (obraId, pagamentoId) => {
-    try {
-      await apiService.marcarPagamentoEfetuado(obraId, pagamentoId)
-      showAlert("Pagamento marcado como efetuado!", "success")
-      // Recarregar dados
-      fetchTodosPagamentos()
-    } catch (error) {
-      console.error("Erro ao marcar pagamento como efetuado:", error)
-      showAlert("Erro ao marcar pagamento como efetuado", "danger")
-    }
-  }
-
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0)
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A"
-    return new Date(dateString).toLocaleDateString("pt-BR")
-  }
-
-  const calcularTotais = () => {
-    const total = pagamentosFiltrados.reduce((acc, p) => acc + (p.valorAReceber || p.totalReceber || p.valor || 0), 0)
-    const pago = pagamentosFiltrados
-      .filter((p) => p.pago || p.status === "pago")
-      .reduce((acc, p) => acc + (p.valorAReceber || p.totalReceber || p.valor || 0), 0)
-    const pendente = total - pago
-
-    return { total, pago, pendente }
-  }
-
-  const totais = calcularTotais()
-  const inicioSemana = getInicioSemana()
-  const fimSemana = getFimSemana()
+  const valorVAVT =
+    (Number.parseFloat(currentPagamento.valorVA) || 0) + (Number.parseFloat(currentPagamento.valorVT) || 0)
+  const totalReceber = (Number.parseFloat(currentPagamento.valorPagar) || 0) + valorVAVT
 
   return (
-    <Container className="mt-4 mb-5">
-      {/* Header */}
-      <Row className="mb-4">
-        <Col>
-          <div className="d-flex align-items-center">
-            <Button variant="outline-secondary" className="me-3" onClick={() => navigate(-1)}>
-              <ArrowLeft size={16} />
-            </Button>
-            <div>
-              <h1 className="mb-0">Pagamentos Semanais</h1>
-              <small className="text-muted">
-                <Calendar size={14} className="me-1" />
-                Semana de {formatDate(inicioSemana)} a {formatDate(fimSemana)}
-              </small>
-            </div>
-          </div>
-        </Col>
-      </Row>
-
+    <div className="space-y-4">
       {alert.show && (
-        <Alert variant={alert.variant} onClose={() => setAlert({ show: false })} dismissible>
+        <Alert variant={alert.variant} dismissible onClose={() => setAlert({ show: false, message: "", variant: "" })}>
           {alert.message}
         </Alert>
       )}
 
-      {/* Filtros */}
-      <Card className="mb-4">
-        <Card.Header>
-          <h5 className="mb-0 d-flex align-items-center">
-            <Filter size={16} className="me-2" />
-            Filtros
-          </h5>
-        </Card.Header>
-        <Card.Body>
-          <Row>
-            <Col md={6}>
-              <Form.Group>
-                <Form.Label>Filtrar por Obra/Empresa</Form.Label>
-                <Form.Select value={filtroObra} onChange={(e) => setFiltroObra(e.target.value)}>
-                  <option value="todos">Todos os gastos</option>
-                  <option value="fornec">Gastos da Fornec</option>
-                  {obras.map((obra, index) => (
-                    <option key={index} value={obra.nome}>
-                      {obra.nome}
-                    </option>
-                  ))}
-                </Form.Select>
-              </Form.Group>
-            </Col>
-            <Col md={6}>
-              <Form.Group>
-                <Form.Label>Filtrar por Status</Form.Label>
-                <Form.Select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
-                  <option value="todos">Todos os status</option>
-                  <option value="pago">Pagos</option>
-                  <option value="pendente">Pendentes</option>
-                </Form.Select>
-              </Form.Group>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
-
-      {/* Resumo Financeiro */}
-      <Row className="mb-4">
-        <Col md={4}>
-          <Card className="text-center border-primary">
-            <Card.Body>
-              <DollarSign size={24} className="text-primary mb-2" />
-              <h5 className="text-primary">{formatCurrency(totais.total)}</h5>
-              <small className="text-muted">Total da Semana</small>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={4}>
-          <Card className="text-center border-success">
-            <Card.Body>
-              <CheckCircle size={24} className="text-success mb-2" />
-              <h5 className="text-success">{formatCurrency(totais.pago)}</h5>
-              <small className="text-muted">Já Pago</small>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={4}>
-          <Card className="text-center border-warning">
-            <Card.Body>
-              <Clock size={24} className="text-warning mb-2" />
-              <h5 className="text-warning">{formatCurrency(totais.pendente)}</h5>
-              <small className="text-muted">Pendente</small>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Tabela de Pagamentos */}
       <Card>
         <Card.Header>
-          <h5 className="mb-0">
-            Lista de Pagamentos
-            <Badge bg="secondary" className="ms-2">
-              {pagamentosFiltrados.length} {pagamentosFiltrados.length === 1 ? "item" : "itens"}
-            </Badge>
-          </h5>
+          <Card.Title className="d-flex align-items-center">
+            <Plus className="me-2" size={20} />
+            Adicionar Pagamento Semanal
+          </Card.Title>
+          <small className="text-muted">Registre pagamentos semanais de funcionários</small>
         </Card.Header>
-        <Card.Body className="p-0">
-          {loading ? (
-            <div className="text-center p-5">
-              <Spinner animation="border" variant="primary" />
-              <p className="mt-3">Carregando pagamentos...</p>
+        <Card.Body>
+          <Form>
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Nome *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentPagamento.nome}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, nome: e.target.value })}
+                    placeholder="Nome completo"
+                  />
+                </Form.Group>
+              </div>
+
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Função *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentPagamento.funcao}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, funcao: e.target.value })}
+                    placeholder="Ex: Pedreiro, Eletricista"
+                  />
+                </Form.Group>
+              </div>
             </div>
-          ) : (
-            <Table responsive hover className="mb-0">
-              <thead className="table-light">
-                <tr>
-                  <th>Nome/Descrição</th>
-                  <th>Obra/Empresa</th>
-                  <th>Tipo</th>
-                  <th className="text-end">Valor</th>
-                  <th>Data Pagamento</th>
-                  <th className="text-center">Status</th>
-                  <th className="text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagamentosFiltrados.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-5 text-muted">
-                      Nenhum pagamento encontrado para os filtros selecionados
-                    </td>
-                  </tr>
-                ) : (
-                  pagamentosFiltrados.map((pagamento, index) => (
-                    <tr key={`${pagamento.obraId || "fornec"}-${pagamento._id || index}`}>
-                      <td>
-                        <strong>{pagamento.nome || pagamento.descricao || "N/A"}</strong>
-                        {pagamento.funcao && <small className="d-block text-muted">{pagamento.funcao}</small>}
-                      </td>
-                      <td>
-                        <Badge bg={pagamento.obraNome ? "primary" : "success"}>{pagamento.obraNome || "Fornec"}</Badge>
-                      </td>
-                      <td>
-                        <small className="text-muted">
-                          {pagamento.tipoContratacao || pagamento.tipo || "Pagamento"}
-                        </small>
-                      </td>
-                      <td className="text-end">
-                        <strong>
-                          {formatCurrency(pagamento.valorAReceber || pagamento.totalReceber || pagamento.valor || 0)}
-                        </strong>
-                      </td>
-                      <td>{formatDate(pagamento.dataPagamento || pagamento.dataVencimento)}</td>
-                      <td className="text-center">
-                        <Badge bg={pagamento.pago || pagamento.status === "pago" ? "success" : "warning"}>
-                          {pagamento.pago || pagamento.status === "pago" ? "Pago" : "Pendente"}
-                        </Badge>
-                      </td>
-                      <td className="text-center">
-                        {!(pagamento.pago || pagamento.status === "pago") && pagamento.obraId ? (
-                          <Button
-                            variant="success"
-                            size="sm"
-                            onClick={() => marcarComoEfetuado(pagamento.obraId, pagamento._id)}
-                          >
-                            <CheckCircle size={14} className="me-1" />
-                            Marcar Pago
-                          </Button>
-                        ) : (
-                          <Badge bg="success">
-                            <CheckCircle size={14} className="me-1" />
-                            Efetuado
-                          </Badge>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </Table>
-          )}
+
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Data de Início *</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={currentPagamento.dataInicio}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, dataInicio: e.target.value })}
+                  />
+                </Form.Group>
+              </div>
+
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Data Fim do Contrato *</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={currentPagamento.dataFimContrato}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, dataFimContrato: e.target.value })}
+                  />
+                </Form.Group>
+              </div>
+            </div>
+
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Tipo de Contratação *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentPagamento.tipoContratacao}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, tipoContratacao: e.target.value })}
+                    placeholder="Ex: CLT, Freelancer"
+                  />
+                </Form.Group>
+              </div>
+
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Valor a Pagar *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    value={currentPagamento.valorPagar}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, valorPagar: e.target.value })}
+                    placeholder="0,00"
+                  />
+                </Form.Group>
+              </div>
+            </div>
+
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Chave PIX *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentPagamento.chavePix}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, chavePix: e.target.value })}
+                    placeholder="Chave PIX"
+                  />
+                </Form.Group>
+              </div>
+
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Nome da Chave PIX *</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={currentPagamento.nomeChavePix}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, nomeChavePix: e.target.value })}
+                    placeholder="Nome do titular"
+                  />
+                </Form.Group>
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <Form.Group>
+                <Form.Label>Qualificação Técnica *</Form.Label>
+                <Form.Control
+                  type="text"
+                  value={currentPagamento.qualificacaoTecnica}
+                  onChange={(e) => setCurrentPagamento({ ...currentPagamento, qualificacaoTecnica: e.target.value })}
+                  placeholder="Qualificação técnica"
+                />
+              </Form.Group>
+            </div>
+
+            <div className="row mb-3">
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Valor VT</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    value={currentPagamento.valorVT}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, valorVT: e.target.value })}
+                    placeholder="0,00"
+                  />
+                </Form.Group>
+              </div>
+
+              <div className="col-md-6">
+                <Form.Group>
+                  <Form.Label>Valor VA</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    value={currentPagamento.valorVA}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, valorVA: e.target.value })}
+                    placeholder="0,00"
+                  />
+                </Form.Group>
+              </div>
+            </div>
+
+            <div className="row mb-3">
+              <div className="col-md-4">
+                <Form.Group>
+                  <Form.Label>Semana *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    value={currentPagamento.semana}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, semana: e.target.value })}
+                    min="1"
+                    max="53"
+                  />
+                </Form.Group>
+              </div>
+
+              <div className="col-md-4">
+                <Form.Group>
+                  <Form.Label>Ano *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    value={currentPagamento.ano}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, ano: e.target.value })}
+                  />
+                </Form.Group>
+              </div>
+
+              <div className="col-md-4">
+                <Form.Group>
+                  <Form.Label>Status *</Form.Label>
+                  <Form.Select
+                    value={currentPagamento.status}
+                    onChange={(e) => setCurrentPagamento({ ...currentPagamento, status: e.target.value })}
+                  >
+                    <option value="pagar">A Pagar</option>
+                    <option value="pagamento efetuado">Pagamento Efetuado</option>
+                  </Form.Select>
+                </Form.Group>
+              </div>
+            </div>
+
+            <div className="p-3 bg-light rounded mb-3">
+              <div className="row">
+                <div className="col-md-6">
+                  <strong>Valor VA + VT:</strong>
+                  <span className="ms-2">R$ {valorVAVT.toFixed(2)}</span>
+                </div>
+                <div className="col-md-6">
+                  <strong>Total a Receber:</strong>
+                  <span className="ms-2">R$ {totalReceber.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+
+            <Button
+              variant="primary"
+              onClick={addPagamento}
+              disabled={isLoading}
+              className="w-100 d-flex align-items-center justify-content-center"
+            >
+              <Plus size={16} className="me-2" />
+              {isLoading ? "Adicionando..." : "Adicionar Pagamento Semanal"}
+            </Button>
+          </Form>
         </Card.Body>
       </Card>
-    </Container>
+    </div>
   )
 }
 
-export default PagamentoSemanal
+export default PagamentoSemanalForm

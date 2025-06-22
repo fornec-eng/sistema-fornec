@@ -4,7 +4,7 @@ import Cards from '../components/Cards'
 const Obra = () => {
   return (
     <>
-        <Cards />
+      <Cards />
     </>
   )
 }
