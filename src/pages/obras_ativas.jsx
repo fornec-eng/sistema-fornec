@@ -1,500 +1,377 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, Button, Modal, Form, Row, Col, Container, Spinner, Alert } from "react-bootstrap"
+import { useState, useEffect, useCallback } from "react"
+import { Card, Button, Modal, Row, Col, Container, Spinner, Alert, Badge, Dropdown } from "react-bootstrap"
 import { Link } from "react-router-dom"
-import ApiBase from "../services/ApiBase"
-import ObrasApi from "../services/ObrasApi" // Mudança aqui: usar ObrasApi ao invés de PagamentosApi
+import { Plus, Building, Eye, Database, ExternalLink, MoreVertical, Trash2 } from "lucide-react"
+import apiService from "../services/apiService"
+import ObraForm from "../components/forms/ObraForm"
+import GastosResumo from "../components/GastosResumo"
+import GoogleSheetsService from "../services/GoogleSheetsService"
 
-// 10 ilustrações do Freepik (exemplos). Verifique a licença antes de usar.
-const watermarkImages = [
-  "https://img.freepik.com/vetores-gratis/ilustracao-do-conceito-de-construcao_114360-2558.jpg",
-  "https://img.freepik.com/vetores-premium/arquiteto-ou-engenheiro-no-canteiro-de-obras-segurando-o-homem-do-plano-de-construcao-na-ilustracao-do-canteiro-de-obras_375605-340.jpg",
-  "https://img.freepik.com/vetores-premium/ilustracao-plana-para-celebracao-do-dia-dos-engenheiros_23-2149549867.jpg",
-  "https://https://img.freepik.com/vetores-gratis/ilustracao-de-engenharia-e-construcao_23-2148904169.jpg",
-  "https://img.freepik.com/vetores-gratis/pessoas-trabalhando-na-construcao_23-2148888797.jpg",
-  "https://img.freepik.com/vetores-gratis/ilustracao-de-engenharia-e-construcao-plana_52683-59165.jpg",
-  "https://img.freepik.com/vetores-gratis/ilustracao-de-engenharia-e-construcao-plana_23-2148897395.jpg",
-  "https://img.freepik.com/vetores-gratis/ilustracao-de-engenharia-e-construcao_23-2148904168.jpg",
-]
-
-const Obras_ativas = () => {
+const ObrasAtivas = () => {
   const [obras, setObras] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [obrasComGastos, setObrasComGastos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [showModal, setShowModal] = useState(false)
-  const [summariesLoading, setSummariesLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [obraToDelete, setObraToDelete] = useState(null)
+  const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
-  // Formulário para nova obra
-  const [obraForm, setObraForm] = useState({
-    nome: "",
-    dataInicio: "",
-    dataFinalEntrega: "",
-    orcamento: "",
-    // Campos adicionais para integração com API
-    descricao: "",
-    endereco: "",
-    responsavel: "",
-  })
+  const showAlert = (message, variant = "success", duration = 5000) => {
+    setAlert({ show: true, message, variant })
+    setTimeout(() => setAlert({ show: false, message: "", variant: "" }), duration)
+  }
 
-  // IDs fixos da pasta e do modelo
-  const folderId = "1ALOCpJyPNQe51HC0TSNX68oa8SIkZqcW"
-  const templateId = "1tnLeEwbrDgpE8p26zcUe3fhWpmmKnxifyiymxgsX8aU"
-
-  // 1) Buscar lista de planilhas e filtrar "modelo_planilha_obra (Não mexer)"
-  const fetchObras = async () => {
+  const fetchObras = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await ApiBase.get(`/google/drive/${folderId}`)
-      const filtered = response.data.filter((obra) => obra.name !== "modelo_planilha_obra (Não mexer)")
-      setObras(filtered)
+      const response = await apiService.obras.getAll()
+      if (!response.error) {
+        const obras = response.obras || []
+        setObras(obras)
+
+        // Buscar gastos para cada obra
+        const obrasComGastosPromises = obras.map(async (obra) => {
+          try {
+            const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
+              apiService.materiais.getAll({ obraId: obra._id }),
+              apiService.maoObra.getAll({ obraId: obra._id }),
+              apiService.equipamentos.getAll({ obraId: obra._id }),
+              apiService.contratos.getAll({ obraId: obra._id }),
+              apiService.outrosGastos.getAll({ obraId: obra._id }),
+            ])
+
+            const totalGastos = [
+              ...(materiaisRes.materiais || []),
+              ...(maoObraRes.maoObras || []),
+              ...(equipamentosRes.equipamentos || []),
+              ...(contratosRes.contratos || []),
+              ...(outrosGastosRes.gastos || []),
+            ].reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
+
+            return {
+              ...obra,
+              totalGastos,
+              saldo: (obra.valorContrato || 0) - totalGastos,
+              percentualGasto: obra.valorContrato > 0 ? (totalGastos / obra.valorContrato) * 100 : 0,
+            }
+          } catch (error) {
+            console.warn(`Erro ao buscar gastos da obra ${obra.nome}:`, error)
+            return {
+              ...obra,
+              totalGastos: 0,
+              saldo: obra.valorContrato || 0,
+              percentualGasto: 0,
+            }
+          }
+        })
+
+        const obrasComGastos = await Promise.all(obrasComGastosPromises)
+        setObrasComGastos(obrasComGastos)
+      } else {
+        showAlert(response.message || "Erro ao carregar obras.", "danger")
+      }
     } catch (error) {
       console.error("Erro ao buscar obras:", error)
-      setError("Erro ao carregar obras")
+      showAlert("Erro ao carregar obras. Verifique a conexão com a API.", "danger")
     } finally {
       setLoading(false)
     }
-  }
-
-  // 2) Para cada obra, buscar o 'Resumo' via /google/sheets/data (POST)
-  const fetchSummaryDataForObras = async () => {
-    if (obras.length === 0) return
-    setSummariesLoading(true)
-
-    try {
-      const updatedObras = await Promise.all(
-        obras.map(async (obra) => {
-          try {
-            const res = await ApiBase.post("/google/sheets/data", {
-              data: { spreadsheetId: obra.id, range: "Resumo" },
-            })
-            const values = res.data.values || []
-            const summaryData = parseResumo(values)
-            return {
-              ...obra,
-              summaryData,
-            }
-          } catch (err) {
-            console.error(`Erro ao buscar resumo para a obra ${obra.name}:`, err)
-            return { ...obra, summaryData: null }
-          }
-        }),
-      )
-      setObras(updatedObras)
-    } catch (err) {
-      console.error("Erro no Promise.all:", err)
-    } finally {
-      setSummariesLoading(false)
-    }
-  }
-
-  // Extrai dados do array "values" retornado
-  const parseResumo = (values) => {
-    const summary = {}
-    values.forEach((row) => {
-      if (row[0] === "Orçamento:") summary.orcamento = row[1]
-      if (row[0] === "Início da Obra:") summary.inicio = row[1]
-      if (row[0] === "Data final de Entrega:") summary.fim = row[1]
-      if (row[0] === "Gasto total:") summary.gastoTotal = row[1]
-    })
-    return summary
-  }
-
-  useEffect(() => {
-    fetchObras()
   }, [])
 
   useEffect(() => {
-    if (obras.length > 0) {
-      fetchSummaryDataForObras()
-    }
-  }, [obras.length])
+    fetchObras()
+  }, [fetchObras])
 
-  // Função para converter data do formato brasileiro para ISO
-  const formatDateToISO = (dateString) => {
-    if (!dateString) return new Date().toISOString()
-
-    // Se já está no formato ISO (YYYY-MM-DD), retorna como está
-    if (dateString.includes("-") && dateString.length === 10) {
-      return new Date(dateString).toISOString()
-    }
-
-    // Se está no formato brasileiro (DD/MM/YYYY), converte
-    if (dateString.includes("/")) {
-      const [day, month, year] = dateString.split("/")
-      return new Date(`${year}-${month}-${day}`).toISOString()
-    }
-
-    return new Date(dateString).toISOString()
-  }
-
-  // Cria nova obra (cópia da planilha modelo + criação na API)
-  const handleCreateObra = async (e) => {
-    e.preventDefault()
-    setError("")
-    setSuccess("")
-
+  const handleCreateObra = async (formData) => {
+    setIsSubmitting(true)
     try {
-      // Validações básicas
-      if (!obraForm.nome || !obraForm.dataInicio || !obraForm.dataFinalEntrega || !obraForm.orcamento) {
-        setError("Todos os campos obrigatórios devem ser preenchidos")
-        return
+      // 1. Primeiro criar a planilha no Google Sheets
+      showAlert("Criando planilha no Google Sheets...", "info")
+
+      const planilhaResponse = await GoogleSheetsService.criarPlanilhaObra(formData.nome, formData)
+
+      if (!planilhaResponse || !planilhaResponse.spreadsheetId) {
+        throw new Error("Erro ao criar planilha no Google Sheets")
       }
 
-      if (Number.parseFloat(obraForm.orcamento) <= 0) {
-        setError("O orçamento deve ser maior que zero")
-        return
+      showAlert("Planilha criada com sucesso! Criando obra...", "info")
+
+      // 2. Adicionar o spreadsheetId aos dados da obra
+      const dadosObraComPlanilha = {
+        ...formData,
+        spreadsheetId: planilhaResponse.spreadsheetId,
+        spreadsheetUrl: planilhaResponse.url,
       }
 
-      if (new Date(obraForm.dataInicio) >= new Date(obraForm.dataFinalEntrega)) {
-        setError("A data de entrega deve ser posterior à data de início")
-        return
+      // 3. Criar a obra na API já com o spreadsheetId
+      const response = await apiService.obras.create(dadosObraComPlanilha)
+
+      if (!response.error) {
+        showAlert(`Obra "${formData.nome}" criada com sucesso e planilha associada!`, "success")
+        setShowModal(false)
+        fetchObras() // Recarregar lista
+      } else {
+        // Se falhou ao criar a obra, mas a planilha foi criada, informar ao usuário
+        showAlert(`Planilha criada, mas erro ao salvar obra: ${response.message || "Erro desconhecido"}`, "warning")
       }
-
-      setLoading(true)
-
-      // 1. Criar a planilha no Google Sheets
-      const planilhaData = {
-        templateId: templateId,
-        newTitle: obraForm.nome,
-        folderId: folderId,
-      }
-
-      const planilhaResponse = await ApiBase.post("/google/sheets/copy", { data: planilhaData })
-
-      // 2. Criar a obra na API usando ObrasApi ao invés de PagamentosApi
-      const obraData = {
-        obra: {
-          nome: obraForm.nome,
-          dataInicio: formatDateToISO(obraForm.dataInicio),
-          dataFinalEntrega: formatDateToISO(obraForm.dataFinalEntrega),
-          orcamento: Number.parseFloat(obraForm.orcamento),
-          // Incluir campos adicionais se preenchidos
-          descricao: obraForm.descricao || "",
-          endereco: obraForm.endereco || "",
-          responsavel: obraForm.responsavel || "",
-        },
-        // Inicializar arrays vazios
-        gastos: [],
-        contratos: [],
-        cronograma: [],
-        pagamentosSemanais: [],
-      }
-
-      // Mudança aqui: usar ObrasApi.criarObra ao invés de PagamentosApi.criarPagamento
-      const apiResponse = await ObrasApi.criarObra(obraData)
-
-      setSuccess(`Obra "${obraForm.nome}" criada com sucesso!`)
-
-      // Limpar formulário
-      setObraForm({
-        nome: "",
-        dataInicio: "",
-        dataFinalEntrega: "",
-        orcamento: "",
-        descricao: "",
-        endereco: "",
-        responsavel: "",
-      })
-
-      setShowModal(false)
-
-      // Recarregar lista de obras
-      fetchObras()
     } catch (error) {
-      console.error("Erro ao criar obra:", error)
-      setError(error.response?.data?.message || "Erro ao criar obra. Tente novamente.")
+      console.error("Erro no fluxo de criação da obra:", error)
+
+      if (error.message?.includes("planilha")) {
+        showAlert("Erro ao criar planilha no Google Sheets. Tente novamente.", "danger")
+      } else {
+        showAlert(error.response?.data?.msg || error.message || "Erro ao criar obra. Tente novamente.", "danger")
+      }
     } finally {
-      setLoading(false)
+      setIsSubmitting(false)
     }
   }
 
-  // Função para formatar valor monetário
-  const formatCurrency = (value) => {
-    if (!value) return "R$ 0,00"
+  const handleDeleteObra = async () => {
+    if (!obraToDelete) return
 
-    // Se já está formatado, retorna como está
-    if (typeof value === "string" && value.includes("R$")) {
-      return value
+    setIsDeleting(true)
+    try {
+      showAlert("Excluindo planilha e obra...", "info")
+
+      const response = await apiService.obras.delete(obraToDelete._id)
+
+      if (!response.error) {
+        showAlert(`Obra "${obraToDelete.nome}" excluída com sucesso!`, "success")
+        setShowDeleteModal(false)
+        setObraToDelete(null)
+        fetchObras() // Recarregar lista
+      } else {
+        showAlert(response.message || "Erro ao excluir obra.", "danger")
+      }
+    } catch (error) {
+      console.error("Erro ao excluir obra:", error)
+      showAlert(error.response?.data?.msg || error.message || "Erro ao excluir obra. Tente novamente.", "danger")
+    } finally {
+      setIsDeleting(false)
     }
-
-    // Se é um número, formata
-    const numValue =
-      typeof value === "string" ? Number.parseFloat(value.replace(/[^\d,.-]/g, "").replace(",", ".")) : value
-
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(numValue || 0)
   }
 
-  // Estilos do card, sem minHeight
-  const cardContainerStyle = {
-    position: "relative",
-    borderRadius: "12px",
-    boxShadow: "0 4px 10px rgba(0, 0, 0, 0.1)",
-    overflow: "hidden",
+  const confirmDeleteObra = (obra) => {
+    setObraToDelete(obra)
+    setShowDeleteModal(true)
   }
 
-  // Imagem preenche o card, mas não define altura
-  const cardImageStyle = {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    zIndex: 1,
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0)
+
+  const getStatusVariant = (status) => {
+    const statusMap = {
+      planejamento: "secondary",
+      em_andamento: "primary",
+      pausada: "warning",
+      concluida: "success",
+      cancelada: "danger",
+    }
+    return statusMap[status] || "secondary"
   }
 
-  // Overlay para o conteúdo, garantindo leitura
-  const overlayStyle = {
-    position: "relative",
-    zIndex: 2,
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
-    borderRadius: "8px",
-    padding: "1rem",
+  const getStatusLabel = (status) => {
+    const statusMap = {
+      planejamento: "Planejamento",
+      em_andamento: "Em Andamento",
+      pausada: "Pausada",
+      concluida: "Concluída",
+      cancelada: "Cancelada",
+    }
+    return statusMap[status] || status
+  }
+
+  const handleOpenSpreadsheet = (obra) => {
+    if (obra.spreadsheetUrl) {
+      window.open(obra.spreadsheetUrl, "_blank")
+    } else if (obra.sheets_id) {
+      window.open(`https://docs.google.com/spreadsheets/d/${obra.sheets_id}/edit`, "_blank")
+    }
   }
 
   return (
-    <Container className="mt-4">
-      <h1 className="text-center mb-4">Lista de Obras</h1>
+    <Container className="mt-4 mb-5">
+      <Row className="mb-4 align-items-center">
+        <Col>
+          <h1 className="mb-0">Obras</h1>
+          <p className="text-muted">Gerencie e acompanhe todos os seus projetos.</p>
+        </Col>
+        <Col xs="auto">
+          <Button variant="primary" onClick={() => setShowModal(true)}>
+            <Plus size={16} className="me-2" />
+            Nova Obra
+          </Button>
+        </Col>
+      </Row>
 
-      {/* Alertas de sucesso e erro */}
-      {error && (
-        <Alert variant="danger" onClose={() => setError("")} dismissible>
-          {error}
+      {alert.show && (
+        <Alert variant={alert.variant} onClose={() => setAlert({ show: false })} dismissible>
+          {alert.message}
         </Alert>
       )}
 
-      {success && (
-        <Alert variant="success" onClose={() => setSuccess("")} dismissible>
-          {success}
-        </Alert>
-      )}
-
-      {(loading || summariesLoading) && (
-        <div className="d-flex justify-content-center mb-4">
+      {loading ? (
+        <div className="text-center p-5">
           <Spinner animation="border" variant="primary" />
-          <span className="ms-2">{loading ? "Carregando obras..." : "Carregando resumos..."}</span>
+          <p className="mt-3">Carregando obras...</p>
         </div>
-      )}
+      ) : (
+        <Row className="g-4">
+          {obrasComGastos.length > 0 ? (
+            obrasComGastos.map((obra) => (
+              <Col key={obra._id} md={6} lg={4}>
+                <Card className="h-100 shadow-sm">
+                  <Card.Header className="d-flex justify-content-between align-items-center">
+                    <h5 className="mb-0">{obra.nome}</h5>
+                    <div className="d-flex align-items-center gap-2">
+                      <Badge bg="success" title="Dados do Banco de Dados">
+                        <Database size={12} />
+                      </Badge>
+                      <Dropdown>
+                        <Dropdown.Toggle variant="outline-secondary" size="sm" className="border-0">
+                          <MoreVertical size={16} />
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu>
+                          <Dropdown.Item onClick={() => confirmDeleteObra(obra)} className="text-danger">
+                            <Trash2 size={16} className="me-2" />
+                            Excluir Obra
+                          </Dropdown.Item>
+                        </Dropdown.Menu>
+                      </Dropdown>
+                    </div>
+                  </Card.Header>
+                  <Card.Body className="d-flex flex-column">
+                    <p>
+                      <strong>Cliente:</strong> {obra.cliente || "Não informado"}
+                    </p>
+                    {obra.endereco && (
+                      <p>
+                        <strong>Endereço:</strong> {obra.endereco}
+                      </p>
+                    )}
+                    <p>
+                      <strong>Valor do Contrato:</strong> {formatCurrency(obra.valorContrato)}
+                    </p>
+                    <p>
+                      <strong>Status:</strong>{" "}
+                      <Badge bg={getStatusVariant(obra.status)}>{getStatusLabel(obra.status)}</Badge>
+                    </p>
 
-      {!loading && !summariesLoading && (
-        <Row className="g-4 justify-content-center">
-          {obras.length > 0 ? (
-            obras.map((obra, index) => {
-              // Cada obra recebe uma imagem fixa, baseada no index
-              const imageIndex = index % watermarkImages.length
-              const imageUrl = watermarkImages[imageIndex]
+                    <GastosResumo totalGastos={obra.totalGastos} valorContrato={obra.valorContrato} />
+                    <div className="mt-auto d-flex flex-column gap-2">
+                      <Link to={`/obras/${obra._id}`} className="w-100">
+                        <Button variant="outline-primary" className="w-100">
+                          <Eye size={16} className="me-2" />
+                          Ver Dashboard
+                        </Button>
+                      </Link>
 
-              return (
-                <Col key={obra.id} xs={12} sm={6} md={4} lg={3}>
-                  <Card style={cardContainerStyle} className="h-100">
-                    {/* Imagem de fundo absoluta */}
-                    <img src={imageUrl || "/placeholder.svg"} alt="Fundo Engenharia" style={cardImageStyle} />
-
-                    {/* Conteúdo sobreposto */}
-                    <Card.Body style={{ position: "relative", zIndex: 2 }}>
-                      <div style={overlayStyle}>
-                        <Card.Title style={{ fontSize: "1.25rem", fontWeight: "600" }}>{obra.name}</Card.Title>
-
-                        {obra.summaryData ? (
-                          <>
-                            <p>
-                              <strong>Orçamento:</strong> {formatCurrency(obra.summaryData.orcamento)}
-                            </p>
-                            <p>
-                              <strong>Início:</strong> {obra.summaryData.inicio || "N/A"}
-                            </p>
-                            <p>
-                              <strong>Fim:</strong> {obra.summaryData.fim || "N/A"}
-                            </p>
-                            <p>
-                              <strong>Gasto Total:</strong> {formatCurrency(obra.summaryData.gastoTotal)}
-                            </p>
-                          </>
-                        ) : (
-                          <p>Nenhum resumo encontrado.</p>
-                        )}
-
-                        {/* Botões (Planilha e Dashboard) */}
-                        <div className="d-flex pt-3">
-                          <Button
-                            variant="primary"
-                            className="me-2 w-50"
-                            onClick={() =>
-                              window.open(`https://docs.google.com/spreadsheets/d/${obra.id}/edit`, "_blank")
-                            }
-                          >
-                            Planilha
-                          </Button>
-                          <Link
-                            to={`/dashboard/${obra.id}`}
-                            state={{ name: obra.name }}
-                            className="w-50"
-                            style={{ textDecoration: "none" }}
-                          >
-                            <Button variant="success" className="w-100">
-                              Dashboard
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              )
-            })
+                      {(obra.sheets_id || obra.spreadsheetUrl) && (
+                        <Button
+                          variant="outline-success"
+                          className="w-100"
+                          onClick={() => handleOpenSpreadsheet(obra)}
+                          title="Abrir planilha no Google Sheets"
+                        >
+                          <ExternalLink size={16} className="me-2" />
+                          Abrir Planilha
+                        </Button>
+                      )}
+                    </div>
+                  </Card.Body>
+                  <Card.Footer>
+                    <small className="text-muted">
+                      {obra.dataInicio && (
+                        <>
+                          Início: {new Date(obra.dataInicio).toLocaleDateString("pt-BR")}
+                          {obra.dataPrevisaoTermino && (
+                            <> | Término: {new Date(obra.dataPrevisaoTermino).toLocaleDateString("pt-BR")}</>
+                          )}
+                        </>
+                      )}
+                      {!obra.dataInicio && "Datas não informadas"}
+                    </small>
+                  </Card.Footer>
+                </Card>
+              </Col>
+            ))
           ) : (
             <Col>
-              <p>Nenhuma obra encontrada.</p>
+              <Card className="text-center p-5">
+                <Building size={48} className="mx-auto text-muted mb-3" />
+                <h4>Nenhuma obra encontrada</h4>
+                <p>Clique em "Nova Obra" para começar a cadastrar seus projetos.</p>
+              </Card>
             </Col>
           )}
-
-          <Col xs={12} sm={6} md={4} lg={3}>
-            <Card
-              className="h-100 d-flex flex-column"
-              style={{
-                borderRadius: "12px",
-                boxShadow: "0 4px 10px rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              {/* Área que cresce para preencher o espaço, centralizando o conteúdo */}
-              <Card.Body className="d-flex flex-column justify-content-center align-items-center flex-grow-1">
-                <Card.Title className="text-center mb-3">Adicionar Nova Obra</Card.Title>
-              </Card.Body>
-
-              {/* Rodapé com o botão, fixo ao final do card */}
-              <div className="p-3">
-                <Button variant="warning" className="w-100" onClick={() => setShowModal(true)}>
-                  Nova Obra
-                </Button>
-              </div>
-            </Card>
-          </Col>
         </Row>
       )}
 
-      {/* Modal para criar nova obra */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg">
-        <Form onSubmit={handleCreateObra}>
-          <Modal.Header closeButton>
-            <Modal.Title>Nova Obra</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <Row>
-              <Col md={6}>
-                <Form.Group controlId="obraName" className="mb-3">
-                  <Form.Label>Nome da Obra *</Form.Label>
-                  <Form.Control
-                    type="text"
-                    placeholder="Digite o nome da obra"
-                    value={obraForm.nome}
-                    onChange={(e) => setObraForm({ ...obraForm, nome: e.target.value })}
-                    required
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group controlId="obraOrcamento" className="mb-3">
-                  <Form.Label>Orçamento (R$) *</Form.Label>
-                  <Form.Control
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                    value={obraForm.orcamento}
-                    onChange={(e) => setObraForm({ ...obraForm, orcamento: e.target.value })}
-                    required
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
+      {/* Modal de Criação */}
+      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Criar Nova Obra</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <ObraForm onSubmit={handleCreateObra} isLoading={isSubmitting} onCancel={() => setShowModal(false)} />
+        </Modal.Body>
+      </Modal>
 
-            <Row>
-              <Col md={6}>
-                <Form.Group controlId="obraDataInicio" className="mb-3">
-                  <Form.Label>Data de Início *</Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={obraForm.dataInicio}
-                    onChange={(e) => setObraForm({ ...obraForm, dataInicio: e.target.value })}
-                    required
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group controlId="obraDataFim" className="mb-3">
-                  <Form.Label>Data de Entrega *</Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={obraForm.dataFinalEntrega}
-                    onChange={(e) => setObraForm({ ...obraForm, dataFinalEntrega: e.target.value })}
-                    required
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-
-            <Row>
-              <Col md={6}>
-                <Form.Group controlId="obraResponsavel" className="mb-3">
-                  <Form.Label>Responsável</Form.Label>
-                  <Form.Control
-                    type="text"
-                    placeholder="Nome do responsável"
-                    value={obraForm.responsavel}
-                    onChange={(e) => setObraForm({ ...obraForm, responsavel: e.target.value })}
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group controlId="obraEndereco" className="mb-3">
-                  <Form.Label>Endereço</Form.Label>
-                  <Form.Control
-                    type="text"
-                    placeholder="Endereço da obra"
-                    value={obraForm.endereco}
-                    onChange={(e) => setObraForm({ ...obraForm, endereco: e.target.value })}
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-
-            <Form.Group controlId="obraDescricao" className="mb-3">
-              <Form.Label>Descrição</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                placeholder="Descrição detalhada da obra"
-                value={obraForm.descricao}
-                onChange={(e) => setObraForm({ ...obraForm, descricao: e.target.value })}
-              />
-            </Form.Group>
-
-            <small className="text-muted">* Campos obrigatórios</small>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowModal(false)} disabled={loading}>
-              Cancelar
-            </Button>
-            <Button variant="primary" type="submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <Spinner animation="border" size="sm" className="me-2" />
-                  Criando...
-                </>
-              ) : (
-                "Criar Obra"
-              )}
-            </Button>
-          </Modal.Footer>
-        </Form>
+      {/* Modal de Confirmação de Exclusão */}
+      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="text-danger">Confirmar Exclusão</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="text-center">
+            <Trash2 size={48} className="text-danger mb-3" />
+            <h5>Tem certeza que deseja excluir esta obra?</h5>
+            {obraToDelete && (
+              <div className="mt-3">
+                <p>
+                  <strong>Obra:</strong> {obraToDelete.nome}
+                </p>
+                <p>
+                  <strong>Cliente:</strong> {obraToDelete.cliente}
+                </p>
+                <Alert variant="warning" className="mt-3">
+                  <strong>Atenção:</strong> Esta ação irá excluir permanentemente:
+                  <ul className="mt-2 mb-0 text-start">
+                    <li>A planilha do Google Sheets associada</li>
+                    <li>Todos os dados da obra no sistema</li>
+                  </ul>
+                  Esta ação não pode ser desfeita!
+                </Alert>
+              </div>
+            )}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowDeleteModal(false)} disabled={isDeleting}>
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={handleDeleteObra} disabled={isDeleting}>
+            {isDeleting ? (
+              <>
+                <Spinner animation="border" size="sm" className="me-2" />
+                Excluindo...
+              </>
+            ) : (
+              <>
+                <Trash2 size={16} className="me-2" />
+                Excluir Obra
+              </>
+            )}
+          </Button>
+        </Modal.Footer>
       </Modal>
     </Container>
   )
 }
 
-export default Obras_ativas
+export default ObrasAtivas
