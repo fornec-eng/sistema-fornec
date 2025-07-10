@@ -21,7 +21,7 @@ class ObrasApi {
    */
   async buscarObra(id) {
     try {
-      const response = await ApiBase.get(`/pagamentos/${id}`)
+      const response = await ApiBase.get(`/obras/${id}`)
       return response.data
     } catch (error) {
       console.error("Erro ao buscar obra:", error)
@@ -47,7 +47,7 @@ class ObrasApi {
    */
   async atualizarObra(id, dadosObra) {
     try {
-      const response = await ApiBase.put(`/pagamentos/${id}/obra`, dadosObra)
+      const response = await ApiBase.put(`/obras/${id}`, dadosObra)
       return response.data
     } catch (error) {
       console.error("Erro ao atualizar obra:", error)
@@ -69,6 +69,32 @@ class ObrasApi {
   }
 
   // ==================== GASTOS ====================
+
+  /**
+   * Buscar gastos por tipo
+   */
+  async buscarGastosPorTipo(obraId, tipo) {
+    try {
+      const response = await ApiBase.get(`/pagamentos/${obraId}/gastos?tipo=${tipo}`)
+      return response.data
+    } catch (error) {
+      console.error(`Erro ao buscar gastos do tipo ${tipo}:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * Buscar todos os gastos de uma obra
+   */
+  async buscarGastos(obraId) {
+    try {
+      const response = await ApiBase.get(`/pagamentos/${obraId}/gastos`)
+      return response.data
+    } catch (error) {
+      console.error("Erro ao buscar gastos:", error)
+      throw error
+    }
+  }
 
   /**
    * Adicionar gasto a uma obra
@@ -110,6 +136,19 @@ class ObrasApi {
   }
 
   // ==================== CONTRATOS ====================
+
+  /**
+   * Buscar contratos de uma obra
+   */
+  async buscarContratos(obraId) {
+    try {
+      const response = await ApiBase.get(`/pagamentos/${obraId}/contratos`)
+      return response.data
+    } catch (error) {
+      console.error("Erro ao buscar contratos:", error)
+      throw error
+    }
+  }
 
   /**
    * Adicionar contrato a uma obra
@@ -265,7 +304,7 @@ class ObrasApi {
    */
   async relatorioFinanceiro(obraId) {
     try {
-      const response = await ApiBase.get(`/pagamentos/${obraId}/relatorio-financeiro`)
+      const response = await ApiBase.get(`/obras/${obraId}/relatorio-gastos`)
       return response.data
     } catch (error) {
       console.error("Erro ao gerar relatório financeiro:", error)
