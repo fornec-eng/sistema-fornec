@@ -93,6 +93,32 @@ const Financeiro = () => {
     return "Obra não identificada"
   }
 
+  // NOVA FUNÇÃO SEGURA: Extrair nome da obra com verificações completas para gastos futuros
+  const extrairNomeObraSeguro = (gasto, obras) => {
+    // Verificações básicas
+    if (!gasto) {
+      return "Fornec (gasto inválido)"
+    }
+
+    if (!gasto.obraId) {
+      return "Fornec (sem obra associada)"
+    }
+
+    // Se obraId for um objeto com nome (populate) - verificando se não é null
+    if (typeof gasto.obraId === 'object' && gasto.obraId !== null && gasto.obraId.nome) {
+      return gasto.obraId.nome
+    }
+    
+    // Se for string, buscar nas obras
+    const obraIdString = extrairObraId(gasto.obraId)
+    if (obraIdString && obras && Array.isArray(obras)) {
+      const obra = obras.find(o => o && o._id === obraIdString)
+      return obra ? obra.nome : `Obra ID: ${obraIdString}`
+    }
+    
+    return "Fornec (sem obra associada)"
+  }
+
   const getDiasRestantes = (dataString) => {
     if (!dataString) return null
     const hoje = new Date()
@@ -183,10 +209,10 @@ const Financeiro = () => {
       if (!response.error) {
         const obras = obrasRes.obras || []
         const gastosComObra = (response.gastos || []).map((gasto) => {
-          // CORRIGIDO: Usar extrairNomeObra
+          // CORRIGIDO: Usar a nova função segura
           return {
             ...gasto,
-            obraNome: extrairNomeObra(gasto, obras),
+            obraNome: extrairNomeObraSeguro(gasto, obras),
           }
         })
         setGastosFuturos(gastosComObra)
