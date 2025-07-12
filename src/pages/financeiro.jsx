@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Container, Row, Col, Card, Spinner, Button, Table, Badge, Tabs, Tab, Modal, Accordion, ListGroup } from "react-bootstrap"
+import { Container, Row, Col, Card, Spinner, Button, Table, Badge, Tabs, Tab, Modal, Accordion, ListGroup, Alert } from "react-bootstrap"
 import { Bar, Doughnut } from "react-chartjs-2"
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from "chart.js"
 import ChartDataLabels from "chartjs-plugin-datalabels"
-import { Download, Plus, AlertCircle, Calendar, Clock, TrendingUp, Edit, Building, ChevronDown, ChevronRight, DollarSign, Trash2 } from "lucide-react"
+import { Download, Plus, AlertCircle, Calendar, Clock, TrendingUp, Edit, Building, ChevronDown, ChevronRight, DollarSign, Trash2, AlertTriangle } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import apiService from "../services/apiService"
 import jsPDF from "jspdf"
@@ -59,6 +59,40 @@ const Financeiro = () => {
     return date.toLocaleDateString("pt-BR", { timeZone: "UTC" })
   }
 
+  // FUNÇÃO UTILITÁRIA: Extrair ID da obra (pode ser string ou objeto)
+  const extrairObraId = (obraId) => {
+    if (!obraId) return null
+    
+    // Se for string, retorna diretamente
+    if (typeof obraId === 'string') {
+      return obraId
+    }
+    
+    // Se for objeto (resultado de populate), retorna o _id
+    if (typeof obraId === 'object' && obraId._id) {
+      return obraId._id
+    }
+    
+    return null
+  }
+
+  // FUNÇÃO UTILITÁRIA: Extrair nome da obra (do objeto populate ou buscar nas obras)
+  const extrairNomeObra = (gasto, obras) => {
+    // Se obraId for um objeto com nome (populate)
+    if (typeof gasto.obraId === 'object' && gasto.obraId.nome) {
+      return gasto.obraId.nome
+    }
+    
+    // Se for string, buscar nas obras
+    const obraIdString = extrairObraId(gasto.obraId)
+    if (obraIdString) {
+      const obra = obras.find(o => o._id === obraIdString)
+      return obra ? obra.nome : `Obra ID: ${obraIdString}`
+    }
+    
+    return "Obra não identificada"
+  }
+
   const getDiasRestantes = (dataString) => {
     if (!dataString) return null
     const hoje = new Date()
@@ -68,7 +102,7 @@ const Financeiro = () => {
     const diffTime = dataVencimento - hoje
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     return diffDays
-  }
+  }  
 
   const fetchAllData = async () => {
     setLoading(true)
@@ -105,7 +139,8 @@ const Financeiro = () => {
       }
 
       const gastosPorObra = obras.map((obra) => {
-        const gastosDaObra = gastos.filter((g) => g.obraId === obra._id)
+        // CORRIGIDO: Usar extrairObraId para comparação
+        const gastosDaObra = gastos.filter((g) => extrairObraId(g.obraId) === obra._id)
         const totalGastoObra = gastosDaObra.reduce((acc, g) => acc + (g.valor || 0), 0)
         return {
           nome: obra.nome,
@@ -148,10 +183,10 @@ const Financeiro = () => {
       if (!response.error) {
         const obras = obrasRes.obras || []
         const gastosComObra = (response.gastos || []).map((gasto) => {
-          const obra = obras.find((o) => o._id === gasto.obraId)
+          // CORRIGIDO: Usar extrairNomeObra
           return {
             ...gasto,
-            obraNome: obra ? obra.nome : null,
+            obraNome: extrairNomeObra(gasto, obras),
           }
         })
         setGastosFuturos(gastosComObra)
@@ -163,7 +198,7 @@ const Financeiro = () => {
     }
   }
 
-  // Função para organizar gastos por obra (CORRIGIDA)
+  // Função para organizar gastos por obra (CORRIGIDA PARA OBJETOS)
   const organizarGastosPorObra = async () => {
     try {
       const [obrasRes, materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
@@ -176,6 +211,7 @@ const Financeiro = () => {
       ])
 
       const obras = obrasRes.obras || []
+      console.log("Lista de obras processada:", obras.map(o => ({ id: o._id, nome: o.nome })))
       
       // Combinar todos os gastos com tipo
       const todosGastos = [
@@ -186,19 +222,24 @@ const Financeiro = () => {
         ...(outrosGastosRes.gastos || []).map(item => ({ ...item, tipo: 'Outros' })),
       ]
 
+      console.log("Total de gastos encontrados:", todosGastos.length)
+
       // Organizar por obra
       const gastosPorObra = {}
       let gastosFornec = []
 
       todosGastos.forEach(gasto => {
-        if (gasto.obraId) {
-          const obra = obras.find(o => o._id === gasto.obraId)
-          // CORREÇÃO: Usar obra.nome em vez de obra.name
-          const nomeObra = obra ? obra.nome : `Obra ${gasto.obraId}`
+        const obraIdString = extrairObraId(gasto.obraId)
+        
+        if (obraIdString) {
+          // CORRIGIDO: Buscar obra pelo ID extraído
+          const obra = obras.find(o => o._id === obraIdString)
+          const nomeObra = extrairNomeObra(gasto, obras)
           
           if (!gastosPorObra[nomeObra]) {
             gastosPorObra[nomeObra] = {
-              obraId: gasto.obraId,
+              obraId: obraIdString,
+              obraEncontrada: !!obra,
               gastos: [],
               total: 0
             }
@@ -210,8 +251,8 @@ const Financeiro = () => {
         }
       })
 
-      // Organizar gastos da Fornec
-      const totalFornec = gastosFornec.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
+      console.log("Gastos organizados por obra:", Object.keys(gastosPorObra))
+      console.log("Gastos da Fornec:", gastosFornec.length)
 
       // Organizar por tipo dentro de cada categoria
       Object.keys(gastosPorObra).forEach(nomeObra => {
@@ -247,7 +288,7 @@ const Financeiro = () => {
         gastosFornec: {
           gastos: gastosFornec,
           gastosPorTipo: gastosFornecPorTipo,
-          total: totalFornec
+          total: gastosFornec.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
         }
       }
     } catch (error) {
@@ -625,6 +666,7 @@ const Financeiro = () => {
     </ListGroup.Item>
   )
 
+  // Componente melhorado para detalhes dos gastos
   const DetalhesGastosComponent = ({ detalhes }) => {
     if (!detalhes) return null
 
@@ -645,7 +687,18 @@ const Financeiro = () => {
                   <div className="d-flex justify-content-between align-items-center w-100 me-3">
                     <div className="d-flex align-items-center">
                       <Building className="me-2" size={18} />
-                      <strong>{nomeObra}</strong>
+                      <div>
+                        <strong>{nomeObra}</strong>
+                        {/* Indicador se a obra foi encontrada ou não */}
+                        {!dadosObra.obraEncontrada && (
+                          <div>
+                            <Badge bg="warning" size="sm" className="ms-2">
+                              Obra não encontrada no sistema
+                            </Badge>
+                          </div>
+                        )}
+                        
+                      </div>
                     </div>
                     <Badge bg="primary" className="ms-auto">
                       {formatCurrency(dadosObra.total)}
@@ -653,15 +706,24 @@ const Financeiro = () => {
                   </div>
                 </Accordion.Header>
                 <Accordion.Body>
+                  {/* Alerta se a obra não foi encontrada */}
+                  {!dadosObra.obraEncontrada && (
+                    <Alert variant="warning" className="mb-3">
+                      <AlertTriangle size={16} className="me-2" />
+                      <strong>Atenção:</strong> Esta obra não foi encontrada no cadastro de obras. 
+                      Os gastos podem estar associados a uma obra que foi excluída ou que possui ID inválido.
+                    </Alert>
+                  )}
+                  
                   <Accordion>
-                    {Object.entries(dadosObra.gastosPorTipo).map(([tipo, dadosTipo], tipoIndex) => (
+                    {Object.entries(dadosObra.gastosPorTipo || {}).map(([tipo, dadosTipo], tipoIndex) => (
                       <Accordion.Item eventKey={tipoIndex.toString()} key={tipo}>
                         <Accordion.Header>
                           <div className="d-flex justify-content-between align-items-center w-100 me-3">
                             <span>{tipo}</span>
                             <div className="d-flex align-items-center gap-2">
                               <Badge bg="secondary">
-                                {dadosTipo.gastos.length} {dadosTipo.gastos.length === 1 ? 'item' : 'itens'}
+                                {dadosTipo.gastos?.length || 0} {(dadosTipo.gastos?.length || 0) === 1 ? 'item' : 'itens'}
                               </Badge>
                               <Badge bg="success">
                                 {formatCurrency(dadosTipo.total)}
@@ -671,7 +733,7 @@ const Financeiro = () => {
                         </Accordion.Header>
                         <Accordion.Body>
                           <ListGroup variant="flush">
-                            {dadosTipo.gastos.map((gasto, gastoIndex) => (
+                            {(dadosTipo.gastos || []).map((gasto, gastoIndex) => (
                               <GastoIndividualItem key={gastoIndex} gasto={gasto} />
                             ))}
                           </ListGroup>
@@ -690,7 +752,12 @@ const Financeiro = () => {
                   <div className="d-flex justify-content-between align-items-center w-100 me-3">
                     <div className="d-flex align-items-center">
                       <Building className="me-2" size={18} />
-                      <strong>Fornec (Gastos Gerais)</strong>
+                      <div>
+                        <strong>Fornec (Gastos Gerais)</strong>
+                        <div>
+                          <small className="text-muted">Gastos não associados a nenhuma obra específica</small>
+                        </div>
+                      </div>
                     </div>
                     <Badge bg="secondary" className="ms-auto">
                       {formatCurrency(detalhes.gastosFornec.total)}
@@ -728,6 +795,31 @@ const Financeiro = () => {
               </Accordion.Item>
             )}
           </Accordion>
+
+          {/* Resumo final */}
+          <Card className="mt-3 bg-light">
+            <Card.Body>
+              <Row className="text-center">
+                <Col md={4}>
+                  <h6 className="text-muted">Total de Obras</h6>
+                  <h4>{Object.keys(detalhes.gastosPorObra).length}</h4>
+                </Col>
+                <Col md={4}>
+                  <h6 className="text-muted">Gastos da Fornec</h6>
+                  <h4>{formatCurrency(detalhes.gastosFornec.total)}</h4>
+                </Col>
+                <Col md={4}>
+                  <h6 className="text-muted">Total Geral</h6>
+                  <h4 className="text-primary">
+                    {formatCurrency(
+                      Object.values(detalhes.gastosPorObra).reduce((acc, obra) => acc + obra.total, 0) +
+                      detalhes.gastosFornec.total
+                    )}
+                  </h4>
+                </Col>
+              </Row>
+            </Card.Body>
+          </Card>
         </Card.Body>
       </Card>
     )
@@ -777,16 +869,7 @@ const Financeiro = () => {
             <h1 className="mb-0">Painel Financeiro</h1>
             <p className="text-muted">Visão geral das finanças e agenda de gastos futuros.</p>
           </Col>
-          <Col xs="auto" className="d-flex gap-2">
-            <Button variant="success" onClick={exportarPDF}>
-              <Download size={16} className="me-2" />
-              Exportar PDF
-            </Button>
-            <Button variant="primary" onClick={() => navigate("/adicionar-pagamentos")}>
-              <Plus size={16} className="me-2" />
-              Adicionar Gasto
-            </Button>
-          </Col>
+          
         </Row>
 
         <Tabs activeKey={activeTab} onSelect={(k) => setActiveTab(k)} className="mb-4">
@@ -1314,7 +1397,7 @@ const Financeiro = () => {
         </Tabs>
       </Container>
 
-      {/* Modal de Edição */}
+      {/* Modais permanecem iguais... */}
       <Modal show={showEditModal} onHide={handleCloseEditModal} size="lg" centered>
         <Modal.Header closeButton>
           <Modal.Title>Editar {editingItem?.tipo}</Modal.Title>
@@ -1325,13 +1408,12 @@ const Financeiro = () => {
               initialData={editingItem}
               onSubmit={handleEditSubmit}
               onCancel={handleCloseEditModal}
-              obraId={editingItem?.obraId}
+              obraId={extrairObraId(editingItem?.obraId)}
             />
           )}
         </Modal.Body>
       </Modal>
 
-      {/* Modal de Confirmação de Exclusão */}
       <Modal show={showDeleteModal} onHide={handleCloseDeleteModal} centered>
         <Modal.Header closeButton>
           <Modal.Title className="text-danger">Confirmar Exclusão</Modal.Title>
