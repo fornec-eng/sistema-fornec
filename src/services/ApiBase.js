@@ -1,17 +1,26 @@
 import axios from "axios"
 
 const ApiBase = axios.create({
-  baseURL: "http://localhost:4000",
+  baseURL: "https://api-fornec.vercel.app",
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
 })
 
+// Função para buscar token nos dois storages
+function getToken() {
+  let token = localStorage.getItem('token');
+  if (!token) {
+    token = sessionStorage.getItem('token');
+  }
+  return token;
+}
+
 // Interceptor para adicionar token de autenticação
 ApiBase.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token")
+    const token = getToken(); // ✅ Agora busca nos dois storages
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -29,8 +38,16 @@ ApiBase.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Token expirado ou inválido
+      // Token expirado ou inválido - limpar ambos os storages
       localStorage.removeItem("token")
+      localStorage.removeItem("_id")
+      localStorage.removeItem("_role")
+      localStorage.removeItem("email")
+      sessionStorage.removeItem("token")
+      sessionStorage.removeItem("_id")
+      sessionStorage.removeItem("_role")
+      sessionStorage.removeItem("email")
+      
       window.location.href = "/login"
     }
     return Promise.reject(error)
