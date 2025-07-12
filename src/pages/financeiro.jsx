@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Container, Row, Col, Card, Spinner, Button, Table, Badge, Tabs, Tab, Modal } from "react-bootstrap"
+import { Container, Row, Col, Card, Spinner, Button, Table, Badge, Tabs, Tab, Modal, Accordion, ListGroup } from "react-bootstrap"
 import { Bar, Doughnut } from "react-chartjs-2"
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from "chart.js"
 import ChartDataLabels from "chartjs-plugin-datalabels"
-import { Download, Plus, AlertCircle, Calendar, Clock, TrendingUp, Edit } from "lucide-react"
+import { Download, Plus, AlertCircle, Calendar, Clock, TrendingUp, Edit, Building, ChevronDown, ChevronRight, DollarSign, Trash2 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import apiService from "../services/apiService"
 import jsPDF from "jspdf"
@@ -31,6 +31,24 @@ const Financeiro = () => {
   // State para modal de edição
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
+
+  // State para modal de exclusão
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletingItem, setDeletingItem] = useState(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Estados para detalhes dos gastos
+  const [showDetalhesGastos, setShowDetalhesGastos] = useState(false)
+  const [detalhesGastos, setDetalhesGastos] = useState(null)
+  const [loadingDetalhes, setLoadingDetalhes] = useState(false)
+
+  // Estado para alertas
+  const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
+
+  const showAlert = (message, variant = "success", duration = 5000) => {
+    setAlert({ show: true, message, variant })
+    setTimeout(() => setAlert({ show: false, message: "", variant: "" }), duration)
+  }
 
   const formatCurrency = (value) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0)
@@ -145,6 +163,110 @@ const Financeiro = () => {
     }
   }
 
+  // Função para organizar gastos por obra (CORRIGIDA)
+  const organizarGastosPorObra = async () => {
+    try {
+      const [obrasRes, materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
+        apiService.obras.getAll(),
+        apiService.materiais.getAll(),
+        apiService.maoObra.getAll(),
+        apiService.equipamentos.getAll(),
+        apiService.contratos.getAll(),
+        apiService.outrosGastos.getAll(),
+      ])
+
+      const obras = obrasRes.obras || []
+      
+      // Combinar todos os gastos com tipo
+      const todosGastos = [
+        ...(materiaisRes.materiais || []).map(item => ({ ...item, tipo: 'Materiais' })),
+        ...(maoObraRes.maoObras || []).map(item => ({ ...item, tipo: 'Mão de Obra' })),
+        ...(equipamentosRes.equipamentos || []).map(item => ({ ...item, tipo: 'Equipamentos' })),
+        ...(contratosRes.contratos || []).map(item => ({ ...item, tipo: 'Contratos' })),
+        ...(outrosGastosRes.gastos || []).map(item => ({ ...item, tipo: 'Outros' })),
+      ]
+
+      // Organizar por obra
+      const gastosPorObra = {}
+      let gastosFornec = []
+
+      todosGastos.forEach(gasto => {
+        if (gasto.obraId) {
+          const obra = obras.find(o => o._id === gasto.obraId)
+          // CORREÇÃO: Usar obra.nome em vez de obra.name
+          const nomeObra = obra ? obra.nome : `Obra ${gasto.obraId}`
+          
+          if (!gastosPorObra[nomeObra]) {
+            gastosPorObra[nomeObra] = {
+              obraId: gasto.obraId,
+              gastos: [],
+              total: 0
+            }
+          }
+          gastosPorObra[nomeObra].gastos.push(gasto)
+          gastosPorObra[nomeObra].total += gasto.valor || 0
+        } else {
+          gastosFornec.push(gasto)
+        }
+      })
+
+      // Organizar gastos da Fornec
+      const totalFornec = gastosFornec.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
+
+      // Organizar por tipo dentro de cada categoria
+      Object.keys(gastosPorObra).forEach(nomeObra => {
+        const gastosPorTipo = {}
+        gastosPorObra[nomeObra].gastos.forEach(gasto => {
+          if (!gastosPorTipo[gasto.tipo]) {
+            gastosPorTipo[gasto.tipo] = {
+              gastos: [],
+              total: 0
+            }
+          }
+          gastosPorTipo[gasto.tipo].gastos.push(gasto)
+          gastosPorTipo[gasto.tipo].total += gasto.valor || 0
+        })
+        gastosPorObra[nomeObra].gastosPorTipo = gastosPorTipo
+      })
+
+      // Organizar gastos da Fornec por tipo
+      const gastosFornecPorTipo = {}
+      gastosFornec.forEach(gasto => {
+        if (!gastosFornecPorTipo[gasto.tipo]) {
+          gastosFornecPorTipo[gasto.tipo] = {
+            gastos: [],
+            total: 0
+          }
+        }
+        gastosFornecPorTipo[gasto.tipo].gastos.push(gasto)
+        gastosFornecPorTipo[gasto.tipo].total += gasto.valor || 0
+      })
+
+      return {
+        gastosPorObra,
+        gastosFornec: {
+          gastos: gastosFornec,
+          gastosPorTipo: gastosFornecPorTipo,
+          total: totalFornec
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao organizar gastos:', error)
+      return null
+    }
+  }
+
+  const handleToggleDetalhesGastos = async () => {
+    if (!showDetalhesGastos) {
+      setLoadingDetalhes(true)
+      const detalhes = await organizarGastosPorObra()
+      setDetalhesGastos(detalhes)
+      setLoadingDetalhes(false)
+    }
+    setShowDetalhesGastos(!showDetalhesGastos)
+  }
+
+  // Funções de edição
   const handleOpenEditModal = (item) => {
     setEditingItem(item)
     setShowEditModal(true)
@@ -159,10 +281,10 @@ const Financeiro = () => {
     if (!editingItem) return
 
     const serviceMap = {
-      Material: apiService.materiais,
+      Materiais: apiService.materiais,
       "Mão de Obra": apiService.maoObra,
-      Equipamento: apiService.equipamentos,
-      Contrato: apiService.contratos,
+      Equipamentos: apiService.equipamentos,
+      Contratos: apiService.contratos,
       Outros: apiService.outrosGastos,
     }
     const service = serviceMap[editingItem.tipo]
@@ -170,26 +292,79 @@ const Financeiro = () => {
     if (service) {
       try {
         await service.update(editingItem._id, formData)
+        showAlert("Item atualizado com sucesso!", "success")
         handleCloseEditModal()
         // Recarrega todos os dados
         fetchAllData()
         fetchGastosFuturos()
+        // Se os detalhes estiverem abertos, recarrega também
+        if (showDetalhesGastos) {
+          const detalhes = await organizarGastosPorObra()
+          setDetalhesGastos(detalhes)
+        }
       } catch (error) {
         console.error("Erro ao atualizar item:", error)
+        showAlert("Erro ao atualizar item.", "danger")
       }
     }
+  }
+
+  // Funções de exclusão
+  const handleOpenDeleteModal = (item) => {
+    setDeletingItem(item)
+    setShowDeleteModal(true)
+  }
+
+  const handleCloseDeleteModal = () => {
+    setDeletingItem(null)
+    setShowDeleteModal(false)
+  }
+
+  const handleDeleteSubmit = async () => {
+     if (!deletingItem) return
+
+     setIsDeleting(true)
+     const serviceMap = {
+       Materiais: apiService.materiais,
+       "Mão de Obra": apiService.maoObra,
+       Equipamentos: apiService.equipamentos,
+       Contratos: apiService.contratos,
+       Outros: apiService.outrosGastos,
+     }
+     const service = serviceMap[deletingItem.tipo]
+
+     try {
+       if (service) {
+         await service.delete(deletingItem._id)
+         showAlert("Item excluído com sucesso!", "success")
+         handleCloseDeleteModal()
+         // Recarrega todos os dados
+         fetchAllData()
+         fetchGastosFuturos()
+         // Se os detalhes estiverem abertos, recarrega também
+         if (showDetalhesGastos) {
+           const detalhes = await organizarGastosPorObra()
+           setDetalhesGastos(detalhes)
+         }
+       }
+     } catch (error) {
+       console.error("Erro ao excluir item:", error)
+       showAlert("Erro ao excluir item.", "danger")
+     } finally {
+       setIsDeleting(false)
+     }
   }
 
   const getEditFormComponent = () => {
     if (!editingItem) return null
     switch (editingItem.tipo) {
-      case "Material":
+      case "Materiais":
         return MaterialForm
       case "Mão de Obra":
         return MaoObraForm
-      case "Equipamento":
+      case "Equipamentos":
         return EquipamentoForm
-      case "Contrato":
+      case "Contratos":
         return ContratoForm
       case "Outros":
         return OutroGastoForm
@@ -411,6 +586,153 @@ const Financeiro = () => {
     return statusConfig[status] || statusConfig.pendente
   }
 
+  // Componentes auxiliares para detalhes dos gastos (COM AÇÕES DE EDITAR/EXCLUIR)
+  const GastoIndividualItem = ({ gasto }) => (
+    <ListGroup.Item className="d-flex justify-content-between align-items-start">
+      <div className="ms-2 me-auto">
+        <div className="fw-bold">{gasto.nome || gasto.descricao || gasto.item || 'Sem descrição'}</div>
+        <small className="text-muted">
+          {gasto.data && `Data: ${formatDate(gasto.data)}`}
+          {gasto.numeroNota && ` • Nota: ${gasto.numeroNota}`}
+          {gasto.localCompra && ` • Local: ${gasto.localCompra}`}
+          {gasto.funcao && ` • Função: ${gasto.funcao}`}
+          {gasto.tipoContratacao && ` • Tipo: ${gasto.tipoContratacao}`}
+        </small>
+      </div>
+      <div className="d-flex align-items-center gap-2">
+        <Badge bg="primary" pill>
+          {formatCurrency(gasto.valor)}
+        </Badge>
+        <div className="d-flex gap-1">
+          <Button 
+            variant="outline-primary" 
+            size="sm" 
+            onClick={() => handleOpenEditModal(gasto)}
+            title="Editar"
+          >
+            <Edit size={12} />
+          </Button>
+          <Button 
+            variant="outline-danger" 
+            size="sm" 
+            onClick={() => handleOpenDeleteModal(gasto)}
+            title="Excluir"
+          >
+            <Trash2 size={12} />
+          </Button>
+        </div>
+      </div>
+    </ListGroup.Item>
+  )
+
+  const DetalhesGastosComponent = ({ detalhes }) => {
+    if (!detalhes) return null
+
+    return (
+      <Card className="shadow-sm mt-4">
+        <Card.Header>
+          <h5 className="mb-0">
+            <DollarSign className="me-2" />
+            Detalhamento Completo dos Gastos
+          </h5>
+        </Card.Header>
+        <Card.Body>
+          <Accordion>
+            {/* Obras */}
+            {Object.entries(detalhes.gastosPorObra).map(([nomeObra, dadosObra], index) => (
+              <Accordion.Item eventKey={index.toString()} key={nomeObra}>
+                <Accordion.Header>
+                  <div className="d-flex justify-content-between align-items-center w-100 me-3">
+                    <div className="d-flex align-items-center">
+                      <Building className="me-2" size={18} />
+                      <strong>{nomeObra}</strong>
+                    </div>
+                    <Badge bg="primary" className="ms-auto">
+                      {formatCurrency(dadosObra.total)}
+                    </Badge>
+                  </div>
+                </Accordion.Header>
+                <Accordion.Body>
+                  <Accordion>
+                    {Object.entries(dadosObra.gastosPorTipo).map(([tipo, dadosTipo], tipoIndex) => (
+                      <Accordion.Item eventKey={tipoIndex.toString()} key={tipo}>
+                        <Accordion.Header>
+                          <div className="d-flex justify-content-between align-items-center w-100 me-3">
+                            <span>{tipo}</span>
+                            <div className="d-flex align-items-center gap-2">
+                              <Badge bg="secondary">
+                                {dadosTipo.gastos.length} {dadosTipo.gastos.length === 1 ? 'item' : 'itens'}
+                              </Badge>
+                              <Badge bg="success">
+                                {formatCurrency(dadosTipo.total)}
+                              </Badge>
+                            </div>
+                          </div>
+                        </Accordion.Header>
+                        <Accordion.Body>
+                          <ListGroup variant="flush">
+                            {dadosTipo.gastos.map((gasto, gastoIndex) => (
+                              <GastoIndividualItem key={gastoIndex} gasto={gasto} />
+                            ))}
+                          </ListGroup>
+                        </Accordion.Body>
+                      </Accordion.Item>
+                    ))}
+                  </Accordion>
+                </Accordion.Body>
+              </Accordion.Item>
+            ))}
+
+            {/* Gastos da Fornec */}
+            {detalhes.gastosFornec.gastos.length > 0 && (
+              <Accordion.Item eventKey={Object.keys(detalhes.gastosPorObra).length.toString()}>
+                <Accordion.Header>
+                  <div className="d-flex justify-content-between align-items-center w-100 me-3">
+                    <div className="d-flex align-items-center">
+                      <Building className="me-2" size={18} />
+                      <strong>Fornec (Gastos Gerais)</strong>
+                    </div>
+                    <Badge bg="secondary" className="ms-auto">
+                      {formatCurrency(detalhes.gastosFornec.total)}
+                    </Badge>
+                  </div>
+                </Accordion.Header>
+                <Accordion.Body>
+                  <Accordion>
+                    {Object.entries(detalhes.gastosFornec.gastosPorTipo).map(([tipo, dadosTipo], tipoIndex) => (
+                      <Accordion.Item eventKey={tipoIndex.toString()} key={tipo}>
+                        <Accordion.Header>
+                          <div className="d-flex justify-content-between align-items-center w-100 me-3">
+                            <span>{tipo}</span>
+                            <div className="d-flex align-items-center gap-2">
+                              <Badge bg="secondary">
+                                {dadosTipo.gastos.length} {dadosTipo.gastos.length === 1 ? 'item' : 'itens'}
+                              </Badge>
+                              <Badge bg="success">
+                                {formatCurrency(dadosTipo.total)}
+                              </Badge>
+                            </div>
+                          </div>
+                        </Accordion.Header>
+                        <Accordion.Body>
+                          <ListGroup variant="flush">
+                            {dadosTipo.gastos.map((gasto, gastoIndex) => (
+                              <GastoIndividualItem key={gastoIndex} gasto={gasto} />
+                            ))}
+                          </ListGroup>
+                        </Accordion.Body>
+                      </Accordion.Item>
+                    ))}
+                  </Accordion>
+                </Accordion.Body>
+              </Accordion.Item>
+            )}
+          </Accordion>
+        </Card.Body>
+      </Card>
+    )
+  }
+
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: "300px" }}>
@@ -435,6 +757,21 @@ const Financeiro = () => {
   return (
     <>
       <Container fluid className="mt-4 mb-5">
+        {/* Alertas */}
+        {alert.show && (
+          <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1050 }}>
+            <div className={`alert alert-${alert.variant} alert-dismissible fade show`} role="alert">
+              {alert.message}
+              <button 
+                type="button" 
+                className="btn-close" 
+                onClick={() => setAlert({ show: false })}
+                aria-label="Close"
+              />
+            </div>
+          </div>
+        )}
+
         <Row className="mb-4 align-items-center">
           <Col>
             <h1 className="mb-0">Painel Financeiro</h1>
@@ -465,17 +802,37 @@ const Financeiro = () => {
             <Row className="mb-4">
               {[
                 { title: "Orçamento Total", value: stats.totalOrcamento, variant: "primary" },
-                { title: "Gasto Total", value: stats.totalGasto, variant: "danger" },
+                { title: "Gasto Total", value: stats.totalGasto, variant: "danger", clickable: true },
                 { title: "Saldo Geral", value: stats.saldoGeral, variant: "success" },
                 { title: "Total de Obras", value: stats.totalObras, variant: "info", isCurrency: false },
               ].map((card, index) => (
                 <Col md={3} key={index}>
-                  <Card className={`border-${card.variant} shadow-sm h-100`}>
+                  <Card 
+                    className={`border-${card.variant} shadow-sm h-100 ${card.clickable && showDetalhesGastos ? 'border-3' : ''}`}
+                    style={{ cursor: card.clickable ? 'pointer' : 'default' }}
+                    onClick={card.clickable ? handleToggleDetalhesGastos : undefined}
+                  >
                     <Card.Body>
-                      <Card.Title className={`text-${card.variant}`}>{card.title}</Card.Title>
+                      <Card.Title className={`text-${card.variant} d-flex justify-content-between align-items-center`}>
+                        {card.title}
+                        {card.clickable && (
+                          loadingDetalhes ? (
+                            <Spinner size="sm" />
+                          ) : showDetalhesGastos ? (
+                            <ChevronDown size={20} />
+                          ) : (
+                            <ChevronRight size={20} />
+                          )
+                        )}
+                      </Card.Title>
                       <h3 className="mt-3 mb-2">
                         {card.isCurrency === false ? card.value : formatCurrency(card.value)}
                       </h3>
+                      {card.clickable && (
+                        <small className="text-muted">
+                          {showDetalhesGastos ? 'Clique para ocultar detalhes' : 'Clique para ver detalhes'}
+                        </small>
+                      )}
                     </Card.Body>
                   </Card>
                 </Col>
@@ -504,6 +861,11 @@ const Financeiro = () => {
                 </Card>
               </Col>
             </Row>
+
+            {/* Componente de detalhes dos gastos */}
+            {showDetalhesGastos && detalhesGastos && (
+              <DetalhesGastosComponent detalhes={detalhesGastos} />
+            )}
           </Tab>
 
           <Tab
@@ -603,6 +965,7 @@ const Financeiro = () => {
                               <th>Dias em Atraso</th>
                               <th>Status</th>
                               <th className="text-end">Valor</th>
+                              <th>Ações</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -640,18 +1003,29 @@ const Financeiro = () => {
                                   <td className="text-end">
                                     <strong>{formatCurrency(gasto.valor)}</strong>
                                   </td>
+                                  <td>
+                                    <div className="d-flex gap-1">
+                                      <Button variant="outline-primary" size="sm" onClick={() => handleOpenEditModal(gasto)}>
+                                        <Edit size={14} />
+                                      </Button>
+                                      <Button variant="outline-danger" size="sm" onClick={() => handleOpenDeleteModal(gasto)}>
+                                        <Trash2 size={14} />
+                                      </Button>
+                                    </div>
+                                  </td>
                                 </tr>
                               )
                             })}
                           </tbody>
                           <tfoot className="table-light">
                             <tr>
-                              <td colSpan="6" className="text-end">
+                              <td colSpan="7" className="text-end">
                                 <strong>Total em Atraso:</strong>
                               </td>
                               <td className="text-end">
                                 <strong className="text-danger">{formatCurrency(agendaData.totalEmAtraso)}</strong>
                               </td>
+                              <td></td>
                             </tr>
                           </tfoot>
                         </Table>
@@ -660,7 +1034,7 @@ const Financeiro = () => {
                   </Col>
                 )}
 
-                {/* Próximos 7 dias */}
+                {/* Próximos 7 dias e Próxima semana - tabelas simplificadas mas mantendo ações */}
                 <Col md={6} className="mb-4">
                   <Card className="shadow-sm">
                     <Card.Header className="bg-warning text-white">
@@ -680,10 +1054,9 @@ const Financeiro = () => {
                             <tr>
                               <th>Descrição</th>
                               <th>Tipo</th>
-                              <th>Obra</th>
                               <th>Vencimento</th>
-                              <th>Status</th>
                               <th className="text-end">Valor</th>
+                              <th>Ações</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -691,7 +1064,6 @@ const Financeiro = () => {
                               const diasRestantes = getDiasRestantes(
                                 gasto.dataVencimento || gasto.dataPagamento || gasto.dataInicio,
                               )
-                              const statusBadge = getStatusBadge(getStatusPagamento(gasto))
                               return (
                                 <tr key={index}>
                                   <td>
@@ -701,9 +1073,6 @@ const Financeiro = () => {
                                     <Badge bg="secondary" className="small">
                                       {gasto.tipo}
                                     </Badge>
-                                  </td>
-                                  <td>
-                                    <small className="text-muted">{gasto.obraNome || "Independente"}</small>
                                   </td>
                                   <td>
                                     <small>
@@ -721,11 +1090,18 @@ const Financeiro = () => {
                                       )}
                                     </small>
                                   </td>
-                                  <td>
-                                    <Badge bg={statusBadge.variant}>{statusBadge.label}</Badge>
-                                  </td>
                                   <td className="text-end">
                                     <strong>{formatCurrency(gasto.valor)}</strong>
+                                  </td>
+                                  <td>
+                                    <div className="d-flex gap-1">
+                                      <Button variant="outline-primary" size="sm" onClick={() => handleOpenEditModal(gasto)}>
+                                        <Edit size={12} />
+                                      </Button>
+                                      <Button variant="outline-danger" size="sm" onClick={() => handleOpenDeleteModal(gasto)}>
+                                        <Trash2 size={12} />
+                                      </Button>
+                                    </div>
                                   </td>
                                 </tr>
                               )
@@ -733,12 +1109,13 @@ const Financeiro = () => {
                           </tbody>
                           <tfoot className="table-light">
                             <tr>
-                              <td colSpan="5" className="text-end">
+                              <td colSpan="3" className="text-end">
                                 <strong>Total:</strong>
                               </td>
                               <td className="text-end">
                                 <strong className="text-warning">{formatCurrency(agendaData.totalProximosDias)}</strong>
                               </td>
+                              <td></td>
                             </tr>
                           </tfoot>
                         </Table>
@@ -765,10 +1142,9 @@ const Financeiro = () => {
                             <tr>
                               <th>Descrição</th>
                               <th>Tipo</th>
-                              <th>Obra</th>
                               <th>Vencimento</th>
-                              <th>Status</th>
                               <th className="text-end">Valor</th>
+                              <th>Ações</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -776,7 +1152,6 @@ const Financeiro = () => {
                               const diasRestantes = getDiasRestantes(
                                 gasto.dataVencimento || gasto.dataPagamento || gasto.dataInicio,
                               )
-                              const statusBadge = getStatusBadge(getStatusPagamento(gasto))
                               return (
                                 <tr key={index}>
                                   <td>
@@ -788,19 +1163,23 @@ const Financeiro = () => {
                                     </Badge>
                                   </td>
                                   <td>
-                                    <small className="text-muted">{gasto.obraNome || "Independente"}</small>
-                                  </td>
-                                  <td>
                                     <small>
                                       {formatDate(gasto.dataVencimento || gasto.dataPagamento || gasto.dataInicio)}
                                       {diasRestantes !== null && <div className="text-muted">{diasRestantes} dias</div>}
                                     </small>
                                   </td>
-                                  <td>
-                                    <Badge bg={statusBadge.variant}>{statusBadge.label}</Badge>
-                                  </td>
                                   <td className="text-end">
                                     <strong>{formatCurrency(gasto.valor)}</strong>
+                                  </td>
+                                  <td>
+                                    <div className="d-flex gap-1">
+                                      <Button variant="outline-primary" size="sm" onClick={() => handleOpenEditModal(gasto)}>
+                                        <Edit size={12} />
+                                      </Button>
+                                      <Button variant="outline-danger" size="sm" onClick={() => handleOpenDeleteModal(gasto)}>
+                                        <Trash2 size={12} />
+                                      </Button>
+                                    </div>
                                   </td>
                                 </tr>
                               )
@@ -808,12 +1187,13 @@ const Financeiro = () => {
                           </tbody>
                           <tfoot className="table-light">
                             <tr>
-                              <td colSpan="5" className="text-end">
+                              <td colSpan="3" className="text-end">
                                 <strong>Total:</strong>
                               </td>
                               <td className="text-end">
                                 <strong className="text-info">{formatCurrency(agendaData.totalProximaSemana)}</strong>
                               </td>
+                              <td></td>
                             </tr>
                           </tfoot>
                         </Table>
@@ -897,9 +1277,14 @@ const Financeiro = () => {
                               <strong>{formatCurrency(gasto.valor)}</strong>
                             </td>
                             <td>
-                              <Button variant="outline-primary" size="sm" onClick={() => handleOpenEditModal(gasto)}>
-                                <Edit size={14} />
-                              </Button>
+                              <div className="d-flex gap-1">
+                                <Button variant="outline-primary" size="sm" onClick={() => handleOpenEditModal(gasto)}>
+                                  <Edit size={14} />
+                                </Button>
+                                <Button variant="outline-danger" size="sm" onClick={() => handleOpenDeleteModal(gasto)}>
+                                  <Trash2 size={14} />
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         )
@@ -944,6 +1329,47 @@ const Financeiro = () => {
             />
           )}
         </Modal.Body>
+      </Modal>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <Modal show={showDeleteModal} onHide={handleCloseDeleteModal} centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="text-danger">Confirmar Exclusão</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="text-center">
+            <Trash2 size={48} className="text-danger mb-3" />
+            <h5>Tem certeza que deseja excluir este item?</h5>
+            {deletingItem && (
+              <div className="mt-3">
+                <p><strong>Tipo:</strong> {deletingItem.tipo}</p>
+                <p><strong>Descrição:</strong> {deletingItem.nome || deletingItem.descricao || 'Sem descrição'}</p>
+                <p><strong>Valor:</strong> {formatCurrency(deletingItem.valor)}</p>
+                <div className="alert alert-warning mt-3">
+                  <strong>Atenção:</strong> Esta ação não pode ser desfeita!
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleCloseDeleteModal} disabled={isDeleting}>
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={handleDeleteSubmit} disabled={isDeleting}>
+            {isDeleting ? (
+              <>
+                <Spinner animation="border" size="sm" className="me-2" />
+                Excluindo...
+              </>
+            ) : (
+              <>
+                <Trash2 size={16} className="me-2" />
+                Excluir
+              </>
+            )}
+          </Button>
+        </Modal.Footer>
       </Modal>
     </>
   )
