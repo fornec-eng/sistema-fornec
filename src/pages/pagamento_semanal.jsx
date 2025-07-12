@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Container, Row, Col, Card, Table, Button, Badge, Alert, Spinner, Form, Modal } from "react-bootstrap"
-import { Calendar, DollarSign, CheckCircle, Clock, Building, Users, Edit, X, AlertCircle, Play } from "lucide-react"
+import { Calendar, DollarSign, CheckCircle, Clock, Building, Users, Edit, X, AlertTriangle, Play } from "lucide-react"
 import apiService from "../services/apiService"
 
 // Importar formulários para edição
@@ -32,7 +32,7 @@ const PagamentoSemanal = () => {
     { value: "efetuado", label: "Efetuado", variant: "success", icon: CheckCircle },
     { value: "em_processamento", label: "Em Processamento", variant: "info", icon: Play },
     { value: "cancelado", label: "Cancelado", variant: "danger", icon: X },
-    { value: "atrasado", label: "Atrasado", variant: "danger", icon: AlertCircle },
+    { value: "atrasado", label: "Atrasado", variant: "danger", icon: AlertTriangle },
   ]
 
   const showAlert = (message, variant = "success", duration = 5000) => {
@@ -40,17 +40,68 @@ const PagamentoSemanal = () => {
     setTimeout(() => setAlert({ show: false, message: "", variant: "" }), duration)
   }
 
+  // Função para obter datas da semana atual
+  const getDatasSemanaAtual = () => {
+    const hoje = new Date()
+    const inicioSemana = new Date(hoje)
+    const fimSemana = new Date(hoje)
+
+    // Calcular início da semana (domingo)
+    inicioSemana.setDate(hoje.getDate() - hoje.getDay())
+    inicioSemana.setHours(0, 0, 0, 0)
+
+    // Calcular fim da semana (sábado)
+    fimSemana.setDate(hoje.getDate() + (6 - hoje.getDay()))
+    fimSemana.setHours(23, 59, 59, 999)
+
+    return { inicioSemana, fimSemana }
+  }
+
+  // Função para extrair data de pagamento de um item
+  const extrairDataPagamento = (item) => {
+    const campos = [
+      'dataPagamento',
+      'dataVencimento', 
+      'data',
+      'fimContrato',
+      'dataTermino',
+      'inicioContrato',
+      'dataInicio'
+    ]
+
+    for (const campo of campos) {
+      if (item[campo]) {
+        const data = new Date(item[campo])
+        if (!isNaN(data.getTime())) {
+          return data
+        }
+      }
+    }
+    return null
+  }
+
+  // Função para verificar se um item está na semana atual
+  const estaNoIntervaloSemana = (item, inicioSemana, fimSemana) => {
+    const dataPagamento = extrairDataPagamento(item)
+    if (!dataPagamento) return false
+    
+    return dataPagamento >= inicioSemana && dataPagamento <= fimSemana
+  }
+
   // Buscar dados
   const fetchData = async () => {
     setLoading(true)
     try {
+      console.log("Iniciando busca de dados...")
+
       // Buscar obras
       const obrasResponse = await apiService.obras.getAll()
       const obras = obrasResponse.obras || []
       setObras(obras)
+      console.log("Obras carregadas:", obras.length)
 
-      // Buscar todos os gastos do banco de dados
-      const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
+      // Buscar todos os gastos
+      const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.allSettled([
         apiService.materiais.getAll(),
         apiService.maoObra.getAll(),
         apiService.equipamentos.getAll(),
@@ -58,27 +109,43 @@ const PagamentoSemanal = () => {
         apiService.outrosGastos.getAll(),
       ])
 
-      // Combinar todos os gastos
+      // Processar resultados das promises
+      const materiais = materiaisRes.status === 'fulfilled' ? (materiaisRes.value?.materiais || []) : []
+      const maoObras = maoObraRes.status === 'fulfilled' ? (maoObraRes.value?.maoObras || []) : []
+      const equipamentos = equipamentosRes.status === 'fulfilled' ? (equipamentosRes.value?.equipamentos || []) : []
+      const contratos = contratosRes.status === 'fulfilled' ? (contratosRes.value?.contratos || []) : []
+      const outrosGastos = outrosGastosRes.status === 'fulfilled' ? (outrosGastosRes.value?.gastos || []) : []
+
+      // Combinar todos os gastos com tipo
       const todosGastos = [
-        ...(materiaisRes.materiais || []).map((item) => ({ ...item, tipo: "Material" })),
-        ...(maoObraRes.maoObras || []).map((item) => ({ ...item, tipo: "Mão de Obra" })),
-        ...(equipamentosRes.equipamentos || []).map((item) => ({ ...item, tipo: "Equipamento" })),
-        ...(contratosRes.contratos || []).map((item) => ({ ...item, tipo: "Contrato" })),
-        ...(outrosGastosRes.gastos || []).map((item) => ({ ...item, tipo: "Outros" })),
+        ...materiais.map(item => ({ ...item, tipo: "Material" })),
+        ...maoObras.map(item => ({ ...item, tipo: "Mão de Obra" })),
+        ...equipamentos.map(item => ({ ...item, tipo: "Equipamento" })),
+        ...contratos.map(item => ({ ...item, tipo: "Contrato" })),
+        ...outrosGastos.map(item => ({ ...item, tipo: "Outros" })),
       ]
 
+      console.log("Total de gastos carregados:", todosGastos.length)
+
+      // Filtrar apenas itens da semana atual
+      const { inicioSemana, fimSemana } = getDatasSemanaAtual()
+      const gastosSemanaAtual = todosGastos.filter(gasto => 
+        estaNoIntervaloSemana(gasto, inicioSemana, fimSemana)
+      )
+
+      console.log("Gastos da semana atual:", gastosSemanaAtual.length)
+
       // Mapear gastos com informações da obra
-      const gastosComObra = todosGastos.map((gasto) => {
-        const obra = obras.find((o) => o._id === gasto.obraId)
+      const gastosComObra = gastosSemanaAtual.map(gasto => {
+        const obra = obras.find(o => o._id === gasto.obraId)
         return {
           ...gasto,
           obraNome: obra ? obra.nome : null,
         }
       })
 
-      console.log("Gastos carregados:", gastosComObra.length)
-      console.log("Exemplo de gasto:", gastosComObra[0])
       setPagamentos(gastosComObra)
+      
     } catch (error) {
       console.error("Erro ao buscar dados:", error)
       showAlert("Erro ao carregar dados. Verifique a conexão.", "danger")
@@ -91,6 +158,61 @@ const PagamentoSemanal = () => {
     fetchData()
   }, [])
 
+  // Função para obter status do pagamento
+  const getPagamentoStatus = (pagamento) => {
+    // Usar o campo statusPagamento se existir
+    if (pagamento.statusPagamento) return pagamento.statusPagamento
+    
+    // Fallback para campos antigos
+    if (pagamento.status) return pagamento.status
+    if (pagamento.efetuado) return "efetuado"
+    
+    // Verificar se está atrasado baseado na data
+    const dataPagamento = extrairDataPagamento(pagamento)
+    const hoje = new Date()
+    
+    if (dataPagamento && dataPagamento < hoje && 
+        !pagamento.efetuado && 
+        !pagamento.status && 
+        !pagamento.statusPagamento) {
+      return "atrasado"
+    }
+    
+    return "pendente"
+  }
+
+  // Filtrar pagamentos
+  const pagamentosFiltrados = pagamentos.filter(pagamento => {
+    // Filtro por obra
+    if (filtroObra && filtroObra !== "todos") {
+      if (filtroObra === "fornec" && pagamento.obraId) return false
+      if (filtroObra !== "fornec" && pagamento.obraId !== filtroObra) return false
+    }
+
+    // Filtro por status
+    if (filtroStatus && filtroStatus !== "todos") {
+      const status = getPagamentoStatus(pagamento)
+      if (status !== filtroStatus) return false
+    }
+
+    return true
+  })
+
+  // Calcular totais por status
+  const totaisPorStatus = statusOptions.reduce((acc, status) => {
+    const itensFiltrados = pagamentosFiltrados.filter(p => getPagamentoStatus(p) === status.value)
+    acc[status.value] = {
+      count: itensFiltrados.length,
+      total: itensFiltrados.reduce((sum, p) => sum + (p.valor || 0), 0)
+    }
+    return acc
+  }, {})
+
+  const totalPagamentos = pagamentosFiltrados.reduce((total, pagamento) => {
+    return total + (pagamento.valor || 0)
+  }, 0)
+
+  // Handlers para modais
   const handleOpenEditModal = (item) => {
     setSelectedPagamento(item)
     setShowEditModal(true)
@@ -111,23 +233,71 @@ const PagamentoSemanal = () => {
       Contrato: apiService.contratos,
       Outros: apiService.outrosGastos,
     }
-    const service = serviceMap[selectedPagamento.tipo]
 
-    if (service) {
-      try {
-        await service.update(selectedPagamento._id, formData)
-        showAlert("Pagamento atualizado com sucesso!", "success")
-        handleCloseEditModal()
-        fetchData() // Recarrega todos os dados
-      } catch (error) {
-        console.error("Erro ao atualizar item:", error)
-        showAlert("Erro ao atualizar pagamento.", "danger")
-      }
+    const service = serviceMap[selectedPagamento.tipo]
+    if (!service) {
+      showAlert("Tipo de pagamento não reconhecido", "danger")
+      return
+    }
+
+    try {
+      await service.update(selectedPagamento._id, formData)
+      showAlert("Pagamento atualizado com sucesso!", "success")
+      handleCloseEditModal()
+      fetchData()
+    } catch (error) {
+      console.error("Erro ao atualizar item:", error)
+      showAlert("Erro ao atualizar pagamento.", "danger")
     }
   }
 
+  const handleOpenStatusModal = (pagamento) => {
+    setSelectedPagamento(pagamento)
+    setNewStatus(getPagamentoStatus(pagamento))
+    setShowStatusModal(true)
+  }
+
+  const handleAlterarStatus = async () => {
+    if (!selectedPagamento || !newStatus) return
+
+    try {
+      // Atualizar localmente primeiro
+      setPagamentos(prev =>
+        prev.map(p => 
+          p._id === selectedPagamento._id 
+            ? { ...p, statusPagamento: newStatus } 
+            : p
+        )
+      )
+
+      showAlert("Status atualizado com sucesso!", "success")
+      setShowStatusModal(false)
+      setSelectedPagamento(null)
+      setNewStatus("")
+
+      // Tentar salvar no backend
+      const serviceMap = {
+        Material: apiService.materiais,
+        "Mão de Obra": apiService.maoObra,
+        Equipamento: apiService.equipamentos,
+        Contrato: apiService.contratos,
+        Outros: apiService.outrosGastos,
+      }
+
+      const service = serviceMap[selectedPagamento.tipo]
+      if (service) {
+        await service.update(selectedPagamento._id, { statusPagamento: newStatus })
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar status:", error)
+      showAlert("Erro ao salvar status no servidor.", "warning")
+    }
+  }
+
+  // Função para obter formulário de edição
   const getEditFormComponent = () => {
     if (!selectedPagamento) return null
+    
     switch (selectedPagamento.tipo) {
       case "Material":
         return MaterialForm
@@ -146,157 +316,34 @@ const PagamentoSemanal = () => {
 
   const EditForm = getEditFormComponent()
 
-  // Filtrar pagamentos da semana atual
-  const getDatasSemanaAtual = () => {
-    const hoje = new Date()
-    const inicioSemana = new Date(hoje)
-    inicioSemana.setDate(hoje.getDate() - hoje.getDay()) // Domingo
-
-    const fimSemana = new Date(inicioSemana)
-    fimSemana.setDate(inicioSemana.getDate() + 6) // Sábado
-
-    return { inicioSemana, fimSemana }
-  }
-
-  const { inicioSemana, fimSemana } = getDatasSemanaAtual()
-
-  // Função para obter status do pagamento
-  const getPagamentoStatus = (pagamento) => {
-    // Usar o novo campo statusPagamento se existir
-    if (pagamento.statusPagamento) return pagamento.statusPagamento
-
-    // Fallback para campos antigos
-    if (pagamento.status) return pagamento.status
-    if (pagamento.efetuado) return "efetuado"
-
-    // Verificar se está atrasado
-    const dataPagamento = new Date(
-      pagamento.dataPagamento ||
-        pagamento.data ||
-        pagamento.dataVencimento ||
-        pagamento.fimContrato ||
-        pagamento.inicioContrato,
-    )
-    const hoje = new Date()
-    if (dataPagamento < hoje && !pagamento.efetuado && !pagamento.status && !pagamento.statusPagamento)
-      return "atrasado"
-
-    return "pendente"
-  }
-
-  // Filtrar pagamentos
-  const pagamentosFiltrados = pagamentos.filter((pagamento) => {
-    // Filtro por obra
-    if (filtroObra && filtroObra !== "todos") {
-      if (filtroObra === "fornec" && pagamento.obraId) return false
-      if (filtroObra !== "fornec" && pagamento.obraId !== filtroObra) return false
-    }
-
-    // Filtro por status
-    if (filtroStatus && filtroStatus !== "todos") {
-      const status = getPagamentoStatus(pagamento)
-      if (status !== filtroStatus) return false
-    }
-
-    // Filtro por semana atual
-    const dataPagamento = new Date(
-      pagamento.dataPagamento ||
-        pagamento.data ||
-        pagamento.dataVencimento ||
-        pagamento.fimContrato ||
-        pagamento.inicioContrato,
-    )
-    return dataPagamento >= inicioSemana && dataPagamento <= fimSemana
-  })
-
-  // Calcular totais por status
-  const totaisPorStatus = statusOptions.reduce((acc, status) => {
-    acc[status.value] = {
-      count: pagamentosFiltrados.filter((p) => getPagamentoStatus(p) === status.value).length,
-      total: pagamentosFiltrados
-        .filter((p) => getPagamentoStatus(p) === status.value)
-        .reduce((sum, p) => sum + (p.valor || p.valorAReceber || 0), 0),
-    }
-    return acc
-  }, {})
-
-  const totalPagamentos = pagamentosFiltrados.reduce((total, pagamento) => {
-    return total + (pagamento.valor || pagamento.valorAReceber || 0)
-  }, 0)
-
-  // Abrir modal para alterar status
-  const handleOpenStatusModal = (pagamento) => {
-    setSelectedPagamento(pagamento)
-    setNewStatus(getPagamentoStatus(pagamento))
-    setShowStatusModal(true)
-  }
-
-  // Alterar status do pagamento
-  const handleAlterarStatus = async () => {
-    if (!selectedPagamento || !newStatus) return
-
-    try {
-      // Atualizar localmente primeiro
-      setPagamentos((prev) =>
-        prev.map((p) => (p._id === selectedPagamento._id ? { ...p, statusPagamento: newStatus } : p)),
-      )
-
-      showAlert("Status atualizado com sucesso!", "success")
-      setShowStatusModal(false)
-      setSelectedPagamento(null)
-      setNewStatus("")
-
-      // Tentar salvar no backend
-      const serviceMap = {
-        Material: apiService.materiais,
-        "Mão de Obra": apiService.maoObra,
-        Equipamento: apiService.equipamentos,
-        Contrato: apiService.contratos,
-        Outros: apiService.outrosGastos,
-      }
-      const service = serviceMap[selectedPagamento.tipo]
-
-      if (service) {
-        console.log("Tentando salvar:", selectedPagamento._id, { statusPagamento: newStatus })
-        const result = await service.update(selectedPagamento._id, { statusPagamento: newStatus })
-        console.log("Salvo com sucesso:", result)
-      } else {
-        console.error("Serviço não encontrado para tipo:", selectedPagamento.tipo)
-      }
-    } catch (error) {
-      console.error("Erro ao atualizar status:", error)
-      showAlert("Erro ao salvar status no servidor.", "warning")
-    }
-  }
-
   // Obter configuração do status
   const getStatusConfig = (status) => {
-    return statusOptions.find((s) => s.value === status) || statusOptions[0]
+    return statusOptions.find(s => s.value === status) || statusOptions[0]
   }
 
+  // Utilitários de formatação
   const formatCurrency = (value) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0)
 
   const formatDate = (date) => {
     if (!date) return "Data não informada"
     const dateObj = new Date(date)
-    return dateObj.toLocaleDateString("pt-BR", { timeZone: "UTC" })
-  }
-
-  const getTipoLabel = (pagamento) => {
-    return pagamento.tipo || "Indefinido"
+    if (isNaN(dateObj.getTime())) return "Data inválida"
+    return dateObj.toLocaleDateString("pt-BR")
   }
 
   const getTipoBadgeVariant = (tipo) => {
     const variants = {
       "Mão de Obra": "success",
-      Material: "danger",
+      Material: "danger", 
       Equipamento: "primary",
       Contrato: "info",
       Outros: "secondary",
     }
     return variants[tipo] || "secondary"
   }
+
+  const { inicioSemana, fimSemana } = getDatasSemanaAtual()
 
   return (
     <>
@@ -305,7 +352,8 @@ const PagamentoSemanal = () => {
           <Col>
             <h1 className="mb-2">Pagamentos Semanais</h1>
             <p className="text-muted">
-              Semana de {inicioSemana.toLocaleDateString("pt-BR")} a {fimSemana.toLocaleDateString("pt-BR")}
+              <Calendar size={16} className="me-1" />
+              Semana de {formatDate(inicioSemana)} a {formatDate(fimSemana)}
             </p>
           </Col>
         </Row>
@@ -327,7 +375,8 @@ const PagamentoSemanal = () => {
               </Card.Body>
             </Card>
           </Col>
-          {statusOptions.slice(0, 5).map((status) => {
+          
+          {statusOptions.slice(0, 5).map(status => {
             const StatusIcon = status.icon
             return (
               <Col md={2} key={status.value}>
@@ -346,16 +395,6 @@ const PagamentoSemanal = () => {
               </Col>
             )
           })}
-          {/* Total de Itens */}
-          <Col md={2}>
-            <Card className="text-center border-0 shadow-sm">
-              <Card.Body>
-                <Calendar size={32} className="text-info mb-2" />
-                <h4 className="mb-1">{pagamentosFiltrados.length}</h4>
-                <small className="text-muted">Total de Itens</small>
-              </Card.Body>
-            </Card>
-          </Col>
         </Row>
 
         {/* Filtros */}
@@ -366,7 +405,7 @@ const PagamentoSemanal = () => {
               <Form.Select value={filtroObra} onChange={(e) => setFiltroObra(e.target.value)}>
                 <option value="">Todas as obras</option>
                 <option value="fornec">Gastos da Fornec</option>
-                {obras.map((obra) => (
+                {obras.map(obra => (
                   <option key={obra._id} value={obra._id}>
                     {obra.nome}
                   </option>
@@ -379,7 +418,7 @@ const PagamentoSemanal = () => {
               <Form.Label>Filtrar por Status</Form.Label>
               <Form.Select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
                 <option value="">Todos os status</option>
-                {statusOptions.map((status) => (
+                {statusOptions.map(status => (
                   <option key={status.value} value={status.value}>
                     {status.label}
                   </option>
@@ -421,15 +460,22 @@ const PagamentoSemanal = () => {
                     const status = getPagamentoStatus(pagamento)
                     const statusConfig = getStatusConfig(status)
                     const StatusIcon = statusConfig.icon
-                    const obra = obras.find((o) => o._id === pagamento.obraId)
+                    const obra = obras.find(o => o._id === pagamento.obraId)
 
                     return (
                       <tr key={`${pagamento._id}-${index}`}>
                         <td>
-                          <strong>{pagamento.nome || pagamento.descricao || pagamento.item || "Sem descrição"}</strong>
+                          <strong>
+                            {pagamento.nome || 
+                             pagamento.descricao || 
+                             pagamento.item || 
+                             "Sem descrição"}
+                          </strong>
                         </td>
                         <td>
-                          <Badge bg={getTipoBadgeVariant(getTipoLabel(pagamento))}>{getTipoLabel(pagamento)}</Badge>
+                          <Badge bg={getTipoBadgeVariant(pagamento.tipo)}>
+                            {pagamento.tipo}
+                          </Badge>
                         </td>
                         <td>
                           {pagamento.obraId ? (
@@ -444,7 +490,9 @@ const PagamentoSemanal = () => {
                         <td>
                           <strong>{formatCurrency(pagamento.valor)}</strong>
                         </td>
-                        <td>{formatDate(pagamento.dataPagamento || pagamento.data || pagamento.dataVencimento)}</td>
+                        <td>
+                          {formatDate(extrairDataPagamento(pagamento))}
+                        </td>
                         <td>
                           <Badge
                             bg={statusConfig.variant}
@@ -456,7 +504,11 @@ const PagamentoSemanal = () => {
                           </Badge>
                         </td>
                         <td>
-                          <Button variant="outline-primary" size="sm" onClick={() => handleOpenEditModal(pagamento)}>
+                          <Button 
+                            variant="outline-primary" 
+                            size="sm" 
+                            onClick={() => handleOpenEditModal(pagamento)}
+                          >
                             <Edit size={14} />
                           </Button>
                         </td>
@@ -504,16 +556,16 @@ const PagamentoSemanal = () => {
           {selectedPagamento && (
             <>
               <div className="mb-3">
-                <strong>Pagamento:</strong> {selectedPagamento.nome || selectedPagamento.descricao || "Sem descrição"}
+                <strong>Pagamento:</strong>{" "}
+                {selectedPagamento.nome || selectedPagamento.descricao || "Sem descrição"}
               </div>
               <div className="mb-3">
-                <strong>Valor:</strong>{" "}
-                {formatCurrency(selectedPagamento.valor || selectedPagamento.valorAReceber || 0)}
+                <strong>Valor:</strong> {formatCurrency(selectedPagamento.valor)}
               </div>
               <Form.Group>
                 <Form.Label>Novo Status</Form.Label>
                 <Form.Select value={newStatus} onChange={(e) => setNewStatus(e.target.value)}>
-                  {statusOptions.map((status) => (
+                  {statusOptions.map(status => (
                     <option key={status.value} value={status.value}>
                       {status.label}
                     </option>
