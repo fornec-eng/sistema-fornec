@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, Button, Modal, Row, Col, Container, Spinner, Alert, Badge, Dropdown } from "react-bootstrap"
 import { Link } from "react-router-dom"
-import { Plus, Building, Eye, Database, ExternalLink, MoreVertical, Trash2 } from "lucide-react"
+import { Plus, Building, Eye, Database, ExternalLink, MoreVertical, Trash2, Home } from "lucide-react"
 import apiService from "../services/apiService"
 import ObraForm from "../components/forms/ObraForm"
 import GastosResumo from "../components/GastosResumo"
@@ -28,55 +28,60 @@ const ObrasAtivas = () => {
   const fetchObras = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await apiService.obras.getAll()
-      if (!response.error) {
-        const obras = response.obras || []
-        setObras(obras)
+      // Etapa 1: Buscar todas as obras e todas as despesas em paralelo
+      const [obrasResponse, materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] =
+        await Promise.all([
+          apiService.obras.getAll(),
+          apiService.materiais.getAll({ limit: 10000 }),
+          apiService.maoObra.getAll({ limit: 10000 }),
+          apiService.equipamentos.getAll({ limit: 10000 }),
+          apiService.contratos.getAll({ limit: 10000 }),
+          apiService.outrosGastos.getAll({ limit: 10000 }),
+        ])
 
-        // Buscar gastos para cada obra
-        const obrasComGastosPromises = obras.map(async (obra) => {
-          try {
-            const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
-              apiService.materiais.getAll({ obraId: obra._id }),
-              apiService.maoObra.getAll({ obraId: obra._id }),
-              apiService.equipamentos.getAll({ obraId: obra._id }),
-              apiService.contratos.getAll({ obraId: obra._id }),
-              apiService.outrosGastos.getAll({ obraId: obra._id }),
-            ])
-
-            const totalGastos = [
-              ...(materiaisRes.materiais || []),
-              ...(maoObraRes.maoObras || []),
-              ...(equipamentosRes.equipamentos || []),
-              ...(contratosRes.contratos || []),
-              ...(outrosGastosRes.gastos || []),
-            ].reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
-
-            return {
-              ...obra,
-              totalGastos,
-              saldo: (obra.valorContrato || 0) - totalGastos,
-              percentualGasto: obra.valorContrato > 0 ? (totalGastos / obra.valorContrato) * 100 : 0,
-            }
-          } catch (error) {
-            console.warn(`Erro ao buscar gastos da obra ${obra.nome}:`, error)
-            return {
-              ...obra,
-              totalGastos: 0,
-              saldo: obra.valorContrato || 0,
-              percentualGasto: 0,
-            }
-          }
-        })
-
-        const obrasComGastos = await Promise.all(obrasComGastosPromises)
-        setObrasComGastos(obrasComGastos)
-      } else {
-        showAlert(response.message || "Erro ao carregar obras.", "danger")
+      if (obrasResponse.error) {
+        showAlert(obrasResponse.message || "Erro ao carregar obras.", "danger")
+        setLoading(false)
+        return
       }
+
+      const obras = obrasResponse.obras || []
+      setObras(obras)
+
+      // Etapa 2: Combinar todas as despesas em um único array
+      const todosGastos = [
+        ...(materiaisRes.materiais || []),
+        ...(maoObraRes.maoObras || []),
+        ...(equipamentosRes.equipamentos || []),
+        ...(contratosRes.contratos || []),
+        ...(outrosGastosRes.gastos || []),
+      ]
+
+      // Função auxiliar para filtrar despesas por obraId
+      const filtrarGastosPorObra = (obraId) => {
+        return todosGastos.filter((gasto) => {
+          const gastoObraId = typeof gasto.obraId === "object" ? gasto.obraId?._id : gasto.obraId
+          return gastoObraId === obraId
+        })
+      }
+
+      // Etapa 3: Mapear as obras para calcular seus totais a partir da lista de despesas combinada
+      const obrasComGastosCalculados = obras.map((obra) => {
+        const gastosDaObra = filtrarGastosPorObra(obra._id)
+        const totalGastos = gastosDaObra.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
+
+        return {
+          ...obra,
+          totalGastos,
+          saldo: (obra.valorContrato || 0) - totalGastos,
+          percentualGasto: obra.valorContrato > 0 ? (totalGastos / obra.valorContrato) * 100 : 0,
+        }
+      })
+
+      setObrasComGastos(obrasComGastosCalculados)
     } catch (error) {
-      console.error("Erro ao buscar obras:", error)
-      showAlert("Erro ao carregar obras. Verifique a conexão com a API.", "danger")
+      console.error("Erro ao buscar obras e gastos:", error)
+      showAlert("Erro ao carregar dados. Verifique a conexão com a API.", "danger")
     } finally {
       setLoading(false)
     }
@@ -196,6 +201,16 @@ const ObrasAtivas = () => {
 
   return (
     <Container className="mt-4 mb-5">
+      <Row className="mb-3">
+        <Col xs="auto">
+          <Link to="/home">
+            <Button variant="primary" size="sm">
+              <Home size={16} className="me-2" />
+              Início
+            </Button>
+          </Link>
+        </Col>
+      </Row>
       <Row className="mb-4 align-items-center">
         <Col>
           <h1 className="mb-0">Obras</h1>

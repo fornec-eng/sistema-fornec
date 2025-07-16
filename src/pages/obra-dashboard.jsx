@@ -64,19 +64,30 @@ const ObraDashboard = () => {
 
       // Buscar gastos diretamente do banco de dados usando apiService
       const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.allSettled([
-        apiService.materiais.getAll({ obraId }),
-        apiService.maoObra.getAll({ obraId }),
-        apiService.equipamentos.getAll({ obraId }),
-        apiService.contratos.getAll({ obraId }),
-        apiService.outrosGastos.getAll({ obraId }),
+        apiService.materiais.getAll({ limit: 10000 }),
+        apiService.maoObra.getAll({ limit: 10000 }),
+        apiService.equipamentos.getAll({ limit: 10000 }),
+        apiService.contratos.getAll({ limit: 10000 }),
+        apiService.outrosGastos.getAll({ limit: 10000 }),
       ])
 
+      // Filtrar gastos por obra
+      const filtrarPorObra = (gastos) => {
+        return gastos.filter(gasto => {
+          const gastoObraId = typeof gasto.obraId === 'object' ? gasto.obraId?._id : gasto.obraId
+          return gastoObraId === obraId || (!gasto.obraId && obraId === null)
+        })
+      }
+
+      console.log('Mão de obra total:', maoObraRes.status === "fulfilled" ? maoObraRes.value.maoObras?.length : 0)
+      console.log('Obra ID:', obraId)
+
       setGastos({
-        materiais: materiaisRes.status === "fulfilled" ? materiaisRes.value.materiais || [] : [],
-        maoObra: maoObraRes.status === "fulfilled" ? maoObraRes.value.maoObras || [] : [],
-        equipamentos: equipamentosRes.status === "fulfilled" ? equipamentosRes.value.equipamentos || [] : [],
-        contratos: contratosRes.status === "fulfilled" ? contratosRes.value.contratos || [] : [],
-        outrosGastos: outrosGastosRes.status === "fulfilled" ? outrosGastosRes.value.gastos || [] : [],
+        materiais: materiaisRes.status === "fulfilled" ? filtrarPorObra(materiaisRes.value.materiais || []) : [],
+        maoObra: maoObraRes.status === "fulfilled" ? filtrarPorObra(maoObraRes.value.maoObras || []) : [],
+        equipamentos: equipamentosRes.status === "fulfilled" ? filtrarPorObra(equipamentosRes.value.equipamentos || []) : [],
+        contratos: contratosRes.status === "fulfilled" ? filtrarPorObra(contratosRes.value.contratos || []) : [],
+        outrosGastos: outrosGastosRes.status === "fulfilled" ? filtrarPorObra(outrosGastosRes.value.gastos || []) : [],
       })
     } catch (error) {
       console.error("Erro ao buscar gastos:", error)
@@ -547,10 +558,10 @@ const ObraDashboard = () => {
                 </Col>
                 <Col md={6}>
                   <p>
-                    <strong>Data de Início:</strong> {new Date(obra.dataInicio).toLocaleDateString()}
+                    <strong>Data de Início:</strong> {new Date(obra.dataInicio).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
                   </p>
                   <p>
-                    <strong>Previsão de Término:</strong> {new Date(obra.dataPrevisaoTermino).toLocaleDateString()}
+                    <strong>Previsão de Término:</strong> {new Date(obra.dataPrevisaoTermino).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
                   </p>
                   <p>
                     <strong>Valor do Contrato:</strong> {formatCurrency(obra.valorContrato)}
@@ -594,7 +605,7 @@ const ObraDashboard = () => {
                 { key: "descricao", label: "Descrição" },
                 { key: "localCompra", label: "Local" },
                 { key: "valor", label: "Valor", render: (item) => formatCurrency(item.valor) },
-                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString() },
+                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString("pt-BR", { timeZone: "UTC" }) },
               ])}
             </Card.Body>
           </Card>
@@ -618,7 +629,7 @@ const ObraDashboard = () => {
                 { key: "item", label: "Item" },
                 { key: "tipoContratacao", label: "Tipo" },
                 { key: "valor", label: "Valor", render: (item) => formatCurrency(item.valor) },
-                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString() },
+                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString("pt-BR", { timeZone: "UTC" }) },
               ])}
             </Card.Body>
           </Card>
@@ -642,7 +653,7 @@ const ObraDashboard = () => {
                 { key: "descricao", label: "Descrição" },
                 { key: "categoriaLivre", label: "Categoria" },
                 { key: "valor", label: "Valor", render: (item) => formatCurrency(item.valor) },
-                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString() },
+                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString("pt-BR", { timeZone: "UTC" }) },
               ])}
             </Card.Body>
           </Card>
