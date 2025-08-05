@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Form, Button, Alert, Row, Col } from "react-bootstrap"
+import { Form, Button, Alert, Row, Col, Modal } from "react-bootstrap"
 import { Save, X } from "lucide-react"
 import apiService from "../../services/apiService"
 
-function ContratoForm({ onSubmit, onCancel, initialData = null }) {
+function ContratoForm({ onSubmit, onCancel, initialData = null, obraId = null, show, onHide }) {
   const [formData, setFormData] = useState({
     loja: "", // Substituindo 'nome' por 'loja'
     valorInicial: "", // Novo campo
@@ -27,9 +27,16 @@ function ContratoForm({ onSubmit, onCancel, initialData = null }) {
         inicioContrato: initialData.inicioContrato
           ? new Date(initialData.inicioContrato).toISOString().split("T")[0]
           : "",
+        obraId: initialData.obraId || obraId || "", // Usar obraId do initialData ou prop
       })
+    } else if (obraId) {
+      // Se não tem initialData mas tem obraId, pré-carregar a obra
+      setFormData(prev => ({
+        ...prev,
+        obraId: obraId
+      }))
     }
-  }, [initialData])
+  }, [initialData, obraId])
 
   const fetchObras = async () => {
     try {
@@ -94,7 +101,7 @@ function ContratoForm({ onSubmit, onCancel, initialData = null }) {
       inicioContrato: "",
       status: "ativo",
       observacoes: "",
-      obraId: "",
+      obraId: obraId || "", // Manter obraId se foi passado como prop
     })
     setError("")
 
@@ -102,9 +109,12 @@ function ContratoForm({ onSubmit, onCancel, initialData = null }) {
     if (onCancel) {
       onCancel()
     }
+    if (onHide) {
+      onHide()
+    }
   }
 
-  return (
+  const renderForm = () => (
     <>
       {error && (
         <Alert variant="danger" className="mb-3">
@@ -189,6 +199,11 @@ function ContratoForm({ onSubmit, onCancel, initialData = null }) {
                   </option>
                 ))}
               </Form.Select>
+              {obraId && (
+                <Form.Text className="text-muted">
+                  Obra pré-selecionada do dashboard atual
+                </Form.Text>
+              )}
             </Form.Group>
           </Col>
         </Row>
@@ -225,6 +240,25 @@ function ContratoForm({ onSubmit, onCancel, initialData = null }) {
       </Form>
     </>
   )
+
+  // Se show é fornecido, renderizar como Modal
+  if (show !== undefined) {
+    return (
+      <Modal show={show} onHide={onHide} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>
+            {initialData ? "Editar Contrato" : "Novo Contrato"}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {renderForm()}
+        </Modal.Body>
+      </Modal>
+    )
+  }
+
+  // Caso contrário, renderizar apenas o formulário
+  return renderForm()
 }
 
 export default ContratoForm

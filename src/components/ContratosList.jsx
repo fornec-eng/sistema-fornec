@@ -10,7 +10,9 @@ import {
   Spinner,
   Alert,
   InputGroup,
-  Form
+  Form,
+  Row,
+  Col
 } from "react-bootstrap"
 import { 
   FileText, 
@@ -19,19 +21,27 @@ import {
   Plus,
   Edit,
   Trash2,
-  Eye
+  Eye,
+  Filter
 } from "lucide-react"
 import apiService from "../services/apiService"
 import ContratoPagamentos from "./forms/ContratoPagamentos"
+import ContratoForm from "./forms/ContratoForm"
 
 function ContratosList({ obraId = null, showAddButton = true, onContractAdded }) {
   const [contratos, setContratos] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
+  const [filterLoja, setFilterLoja] = useState("") // Novo filtro por loja
   const [showPagamentosModal, setShowPagamentosModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false) // Novo modal de edição
   const [selectedContrato, setSelectedContrato] = useState(null)
+  const [editingContrato, setEditingContrato] = useState(null) // Para edição
   const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
+
+  // Lista de lojas únicas para o filtro
+  const [lojas, setLojas] = useState([])
 
   useEffect(() => {
     fetchContratos()
@@ -43,7 +53,12 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
       const params = obraId ? { obraId } : {}
       const response = await apiService.contratos.getAll(params)
       if (!response.error) {
-        setContratos(response.contratos || [])
+        const contratosData = response.contratos || []
+        setContratos(contratosData)
+        
+        // Extrair lojas únicas para o filtro
+        const lojasUnicas = [...new Set(contratosData.map(c => c.loja).filter(Boolean))]
+        setLojas(lojasUnicas)
       }
     } catch (error) {
       console.error("Erro ao buscar contratos:", error)
@@ -61,6 +76,28 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
   const handleOpenPagamentos = (contrato) => {
     setSelectedContrato(contrato)
     setShowPagamentosModal(true)
+  }
+
+  const handleOpenEditModal = (contrato) => {
+    setEditingContrato(contrato)
+    setShowEditModal(true)
+  }
+
+  const handleCloseEditModal = () => {
+    setEditingContrato(null)
+    setShowEditModal(false)
+  }
+
+  const handleEditSubmit = async (formData) => {
+    try {
+      await apiService.contratos.update(editingContrato._id, formData)
+      showAlert("Contrato atualizado com sucesso!", "success")
+      handleCloseEditModal()
+      fetchContratos()
+    } catch (error) {
+      console.error("Erro ao atualizar contrato:", error)
+      showAlert("Erro ao atualizar contrato", "danger")
+    }
   }
 
   const handleDelete = async (contratoId) => {
@@ -103,7 +140,9 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
     
     const matchesStatus = filterStatus === "" || contrato.statusGeralPagamentos === filterStatus
     
-    return matchesSearch && matchesStatus
+    const matchesLoja = filterLoja === "" || contrato.loja === filterLoja
+    
+    return matchesSearch && matchesStatus && matchesLoja
   })
 
   // Calcular totais
@@ -187,8 +226,8 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
           </div>
 
           {/* Filtros */}
-          <div className="row mb-3">
-            <div className="col-md-6">
+          <Row className="mb-3">
+            <Col md={4}>
               <InputGroup>
                 <InputGroup.Text>
                   <Search size={16} />
@@ -199,8 +238,8 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </InputGroup>
-            </div>
-            <div className="col-md-6">
+            </Col>
+            <Col md={4}>
               <Form.Select 
                 value={filterStatus} 
                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -212,8 +251,26 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
                 <option value="todos_pagos">Todos Pagos</option>
                 <option value="com_atraso">Com Atraso</option>
               </Form.Select>
-            </div>
-          </div>
+            </Col>
+            <Col md={4}>
+              <InputGroup>
+                <InputGroup.Text>
+                  <Filter size={16} />
+                </InputGroup.Text>
+                <Form.Select 
+                  value={filterLoja} 
+                  onChange={(e) => setFilterLoja(e.target.value)}
+                >
+                  <option value="">Todas as lojas</option>
+                  {lojas.map(loja => (
+                    <option key={loja} value={loja}>
+                      {loja}
+                    </option>
+                  ))}
+                </Form.Select>
+              </InputGroup>
+            </Col>
+          </Row>
 
           {/* Tabela de Contratos */}
           {filteredContratos.length === 0 ? (
@@ -225,7 +282,6 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
             <Table striped bordered hover responsive>
               <thead>
                 <tr>
-                  <th>ID</th>
                   <th>Loja</th>
                   <th>Valor Inicial</th>
                   <th>Total Pago</th>
@@ -242,7 +298,6 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
                   
                   return (
                     <tr key={contrato._id}>
-                      <td>{contrato.contratoId}</td>
                       <td>{contrato.loja}</td>
                       <td>{formatCurrency(contrato.valorInicial)}</td>
                       <td>{formatCurrency(contrato.valorTotalPagamentos)}</td>
@@ -269,7 +324,7 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
                           variant="outline-info"
                           size="sm"
                           className="me-2"
-                          onClick={() => {/* Implementar edição */}}
+                          onClick={() => handleOpenEditModal(contrato)}
                           title="Editar Contrato"
                         >
                           <Edit size={14} />
@@ -303,6 +358,17 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
             fetchContratos() // Recarregar contratos após fechar
           }}
           onUpdate={fetchContratos}
+        />
+      )}
+
+      {/* Modal de Edição */}
+      {editingContrato && (
+        <ContratoForm
+          initialData={editingContrato}
+          onSubmit={handleEditSubmit}
+          onCancel={handleCloseEditModal}
+          show={showEditModal}
+          onHide={handleCloseEditModal}
         />
       )}
     </>
