@@ -119,6 +119,32 @@ class ApiService {
       const response = await ApiBase.delete(`/contratos/${id}`)
       return response.data
     },
+    // Métodos para pagamentos aninhados
+    listarPagamentos: async (contratoId) => {
+      const response = await ApiBase.get(`/contratos/${contratoId}/pagamentos`)
+      return response.data
+    },
+    adicionarPagamento: async (contratoId, data) => {
+      const response = await ApiBase.post(`/contratos/${contratoId}/pagamentos`, data)
+      return response.data
+    },
+    buscarPagamento: async (contratoId, pagamentoId) => {
+      const response = await ApiBase.get(`/contratos/${contratoId}/pagamentos/${pagamentoId}`)
+      return response.data
+    },
+    atualizarPagamento: async (contratoId, pagamentoId, data) => {
+      const response = await ApiBase.put(`/contratos/${contratoId}/pagamentos/${pagamentoId}`, data)
+      return response.data
+    },
+    removerPagamento: async (contratoId, pagamentoId) => {
+      const response = await ApiBase.delete(`/contratos/${contratoId}/pagamentos/${pagamentoId}`)
+      return response.data
+    },
+    // Relatório de pagamentos
+    relatorioPagamentos: async (params = {}) => {
+      const response = await ApiBase.get("/contratos/relatorio/pagamentos", { params })
+      return response.data
+    },
   }
 
   // Outros Gastos
@@ -214,13 +240,25 @@ class ApiService {
       // Processar contratos
       if (contratosRes.contratos) {
         contratosRes.contratos.forEach(contrato => {
+          // Usar valorInicial ao invés de valor
+          const valorContrato = contrato.valorInicial || contrato.valor || 0
           const dataVencimento = this.extrairDataVencimento(contrato)
-          if (dataVencimento && dataVencimento >= hoje) {
+          
+          // Verificar se tem pagamentos pendentes
+          const temPagamentosPendentes = contrato.statusGeralPagamentos && 
+            contrato.statusGeralPagamentos !== 'todos_pagos' &&
+            contrato.statusGeralPagamentos !== 'sem_pagamentos'
+          
+          if ((dataVencimento && dataVencimento >= hoje) || temPagamentosPendentes) {
             gastosFuturos.push({
               ...contrato,
               tipo: 'Contrato',
-              dataVencimento: dataVencimento.toISOString(),
+              valor: valorContrato,
+              dataVencimento: dataVencimento ? dataVencimento.toISOString() : new Date().toISOString(),
               dataPagamento: contrato.inicioContrato,
+              // Adicionar informações dos pagamentos
+              valorTotalPagamentos: contrato.valorTotalPagamentos || 0,
+              saldoPendente: valorContrato - (contrato.valorTotalPagamentos || 0)
             })
           }
         })

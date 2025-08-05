@@ -28,6 +28,7 @@ import OutroGastoForm from "../components/forms/OutroGastoForm"
 import apiService from "../services/apiService"
 import ObrasApi from "../services/ObrasApi"
 import GoogleSheetsService from "../services/GoogleSheetsService"
+import ContratosList from "../components/ContratosList"
 
 const ObraDashboard = () => {
   const { id: obraId } = useParams()
@@ -635,16 +636,11 @@ const ObraDashboard = () => {
           </Card>
         </Tab>
         <Tab eventKey="contratos" title={`📄 Contratos (${gastos.contratos.length})`}>
-          <Card>
-            <Card.Body>
-              {renderTable("contratos", gastos.contratos, [
-                { key: "nome", label: "Objeto" },
-                { key: "tipoPagamento", label: "Pagamento" },
-                { key: "valor", label: "Valor", render: (item) => formatCurrency(item.valor) },
-                { key: "status", label: "Status", render: (item) => <Badge bg="info">{item.status}</Badge> },
-              ])}
-            </Card.Body>
-          </Card>
+          <ContratosList 
+            obraId={obraId}
+            showAddButton={true}
+            onContractAdded={() => handleOpenModal("contratosForm")}
+          />
         </Tab>
         <Tab eventKey="outrosGastos" title={`💸 Outros (${gastos.outrosGastos.length})`}>
           <Card>

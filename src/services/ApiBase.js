@@ -2,7 +2,7 @@ import axios from "axios"
 
 const ApiBase = axios.create({
   baseURL: "https://api-fornec.vercel.app",
-  timeout: 30000,
+  timeout: 60000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -55,3 +55,4 @@ ApiBase.interceptors.response.use(
 )
 
 export default ApiBase
+

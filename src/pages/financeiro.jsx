@@ -14,6 +14,10 @@ import AgendaGastos from "../components/financeiro/AgendaGastos"
 import TabelaGastosCompleta from "../components/financeiro/TabelaGastosCompleta"
 import EditGastoModal from "../components/financeiro/EditGastoModal"
 import DeleteGastoModal from "../components/financeiro/DeleteGastoModal"
+import ContratosResumo from "../components/financeiro/ContratosResumo"
+
+import { FileText } from "lucide-react" // Novo ícone para contratos
+
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend, ChartDataLabels)
 
@@ -35,6 +39,9 @@ const Financeiro = () => {
 
   const [detalhesGastos, setDetalhesGastos] = useState(null)
   const [loadingDetalhes, setLoadingDetalhes] = useState(false)
+
+  const [obras, setObras] = useState([])
+
 
   const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
@@ -525,6 +532,17 @@ const Financeiro = () => {
               handleOpenEditModal={handleOpenEditModal}
               handleOpenDeleteModal={handleOpenDeleteModal}
             />
+          </Tab>
+          <Tab
+            eventKey="contratos"
+            title={
+              <span>
+                <FileText size={16} className="me-2" />
+                Contratos
+              </span>
+            }
+          >
+            <ContratosResumo obras={obras} />
           </Tab>
         </Tabs>
       </Container>
