@@ -178,7 +178,19 @@ function ContratoPagamentos({ contratoId, show, onHide, onUpdate }) {
 
   const formatDate = (date) => {
     if (!date) return ""
-    return new Date(date).toLocaleDateString("pt-BR")
+    
+    // Para datas que vêm do banco em formato ISO, usar UTC para evitar problemas de timezone
+    const dateObj = new Date(date)
+    
+    // Se a data é inválida, retornar string vazia
+    if (isNaN(dateObj.getTime())) return ""
+    
+    // Usar UTC para evitar problemas de timezone
+    const day = String(dateObj.getUTCDate()).padStart(2, '0')
+    const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0')
+    const year = dateObj.getUTCFullYear()
+    
+    return `${day}/${month}/${year}`
   }
 
   return (

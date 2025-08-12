@@ -37,7 +37,7 @@ function ContratoForm({ onSubmit, onCancel, initialData = null, obraId = null, s
       }))
     }
   }, [initialData, obraId])
-
+  
   const fetchObras = async () => {
     try {
       const response = await apiService.obras.getAll()

@@ -50,15 +50,33 @@ function ContratosList({ obraId = null, showAddButton = true, onContractAdded })
   const fetchContratos = async () => {
     setLoading(true)
     try {
-      const params = obraId ? { obraId } : {}
+      // Primeiro tentar buscar todos de uma vez com limit alto
+      const params = obraId ? { obraId, limit: 1000 } : { limit: 1000 }
       const response = await apiService.contratos.getAll(params)
+      
       if (!response.error) {
-        const contratosData = response.contratos || []
-        setContratos(contratosData)
+        let allContratos = response.contratos || []
+        
+        // Se ainda tem mais páginas (total > limit), buscar o restante
+        if (response.pagination && response.pagination.total > allContratos.length) {
+          // Fazer uma requisição com o limit exato do total
+          const fullParams = obraId 
+            ? { obraId, limit: response.pagination.total } 
+            : { limit: response.pagination.total }
+          const fullResponse = await apiService.contratos.getAll(fullParams)
+          
+          if (!fullResponse.error) {
+            allContratos = fullResponse.contratos || []
+          }
+        }
+        
+        setContratos(allContratos)
         
         // Extrair lojas únicas para o filtro
-        const lojasUnicas = [...new Set(contratosData.map(c => c.loja).filter(Boolean))]
+        const lojasUnicas = [...new Set(allContratos.map(c => c.loja).filter(Boolean))]
         setLojas(lojasUnicas)
+        
+        console.log(`Total de contratos carregados: ${allContratos.length}`)
       }
     } catch (error) {
       console.error("Erro ao buscar contratos:", error)
