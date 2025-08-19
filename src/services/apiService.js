@@ -374,4 +374,60 @@ class ApiService {
   }
 }
 
+const maoObraServiceFixed = {
+  getAll: async (params = {}) => {
+    try {
+      console.log('Buscando mão de obra com parâmetros:', params)
+      const response = await ApiBase.get("/mao-obra", { params })
+      console.log('Resposta da API mão de obra:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('Erro ao buscar mão de obra:', error)
+      throw error
+    }
+  },
+  getById: async (id) => {
+    try {
+      const response = await ApiBase.get(`/mao-obra/${id}`)
+      return response.data
+    } catch (error) {
+      console.error('Erro ao buscar mão de obra por ID:', error)
+      throw error
+    }
+  },
+  create: async (data) => {
+    try {
+      console.log('Criando mão de obra:', data)
+      const response = await ApiBase.post("/mao-obra", data)
+      console.log('Resposta da criação:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('Erro ao criar mão de obra:', error)
+      throw error
+    }
+  },
+  update: async (id, data) => {
+    try {
+      console.log('Atualizando mão de obra:', id, data)
+      const response = await ApiBase.put(`/mao-obra/${id}`, data)
+      console.log('Resposta da atualização:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('Erro ao atualizar mão de obra:', error)
+      throw error
+    }
+  },
+  delete: async (id) => {
+    try {
+      console.log('Deletando mão de obra:', id)
+      const response = await ApiBase.delete(`/mao-obra/${id}`)
+      console.log('Resposta da deleção:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('Erro ao deletar mão de obra:', error)
+      throw error
+    }
+  },
+}
+
 export default new ApiService()

@@ -5,7 +5,7 @@ import { Form, Button, Alert, Row, Col } from "react-bootstrap"
 import { Save, X } from "lucide-react"
 import apiService from "../../services/apiService"
 
-function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
+const MaoObraForm = ({ onSubmit, onCancel, initialData = null, obraId = null }) => {
   const [formData, setFormData] = useState({
     nome: "",
     funcao: "",
@@ -15,7 +15,7 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
     fimContrato: "",
     diaPagamento: "",
     statusPagamento: "pendente",
-    obraId: "",
+    obraId: obraId || "", // Usar obraId passado como prop
     observacoes: "",
   })
 
@@ -31,10 +31,19 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
         inicioContrato: initialData.inicioContrato
           ? new Date(initialData.inicioContrato).toISOString().split("T")[0]
           : "",
-        fimContrato: initialData.fimContrato ? new Date(initialData.fimContrato).toISOString().split("T")[0] : "",
+        fimContrato: initialData.fimContrato 
+          ? new Date(initialData.fimContrato).toISOString().split("T")[0] 
+          : "",
+        obraId: initialData.obraId || obraId || "", // Priorizar obraId do initialData
       })
+    } else if (obraId) {
+      // Se não tem initialData mas tem obraId, definir no form
+      setFormData(prev => ({
+        ...prev,
+        obraId: obraId
+      }))
     }
-  }, [initialData])
+  }, [initialData, obraId])
 
   const fetchObras = async () => {
     try {
@@ -60,6 +69,8 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
     setLoading(true)
     setError("")
 
+    console.log('Dados do formulário antes da validação:', formData)
+
     // Validações básicas
     if (!formData.nome.trim()) {
       setError("Nome do funcionário é obrigatório")
@@ -79,7 +90,7 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
       return
     }
 
-    if (!formData.valor || Number.parseFloat(formData.valor) <= 0) {
+    if (!formData.valor || parseFloat(formData.valor) <= 0) {
       setError("Valor deve ser maior que zero")
       setLoading(false)
       return
@@ -97,11 +108,9 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
       return
     }
 
-    if (
-      !formData.diaPagamento ||
-      Number.parseInt(formData.diaPagamento) < 1 ||
-      Number.parseInt(formData.diaPagamento) > 31
-    ) {
+    if (!formData.diaPagamento || 
+        parseInt(formData.diaPagamento) < 1 || 
+        parseInt(formData.diaPagamento) > 31) {
       setError("Dia do pagamento deve ser entre 1 e 31")
       setLoading(false)
       return
@@ -116,12 +125,32 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
     try {
       const dataToSubmit = {
         ...formData,
-        valor: Number.parseFloat(formData.valor),
-        diaPagamento: Number.parseInt(formData.diaPagamento),
+        valor: parseFloat(formData.valor),
+        diaPagamento: parseInt(formData.diaPagamento),
+        // Garantir que obraId seja incluído corretamente
+        obraId: formData.obraId || obraId || null,
       }
 
-      // Apenas chama o onSubmit passado como prop, não salva diretamente
+      console.log('Dados para envio:', dataToSubmit)
+
+      // Chamar onSubmit passado como prop
       await onSubmit(dataToSubmit)
+      
+      // Resetar formulário após sucesso
+      if (!initialData) {
+        setFormData({
+          nome: "",
+          funcao: "",
+          tipoContratacao: "",
+          valor: "",
+          inicioContrato: "",
+          fimContrato: "",
+          diaPagamento: "",
+          statusPagamento: "pendente",
+          obraId: obraId || "",
+          observacoes: "",
+        })
+      }
     } catch (error) {
       console.error("Erro ao salvar mão de obra:", error)
       setError("Erro ao salvar mão de obra. Tente novamente.")
@@ -141,7 +170,7 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
       fimContrato: "",
       diaPagamento: "",
       statusPagamento: "pendente",
-      obraId: "",
+      obraId: obraId || "",
       observacoes: "",
     })
     setError("")
@@ -172,6 +201,7 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
                 onChange={handleChange}
                 placeholder="Nome completo"
                 required
+                disabled={loading}
               />
             </Form.Group>
           </Col>
@@ -185,6 +215,7 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
                 onChange={handleChange}
                 placeholder="Ex: Pedreiro, Eletricista, Encanador"
                 required
+                disabled={loading}
               />
             </Form.Group>
           </Col>
@@ -194,7 +225,13 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
           <Col md={4}>
             <Form.Group className="mb-3">
               <Form.Label>Tipo de Contratação *</Form.Label>
-              <Form.Select name="tipoContratacao" value={formData.tipoContratacao} onChange={handleChange} required>
+              <Form.Select 
+                name="tipoContratacao" 
+                value={formData.tipoContratacao} 
+                onChange={handleChange} 
+                required
+                disabled={loading}
+              >
                 <option value="">Selecione...</option>
                 <option value="clt">CLT</option>
                 <option value="pj">PJ</option>
@@ -216,13 +253,20 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
                 step="0.01"
                 min="0"
                 required
+                disabled={loading}
               />
             </Form.Group>
           </Col>
           <Col md={4}>
             <Form.Group className="mb-3">
               <Form.Label>Status do Pagamento *</Form.Label>
-              <Form.Select name="statusPagamento" value={formData.statusPagamento} onChange={handleChange} required>
+              <Form.Select 
+                name="statusPagamento" 
+                value={formData.statusPagamento} 
+                onChange={handleChange} 
+                required
+                disabled={loading}
+              >
                 <option value="pendente">Pendente</option>
                 <option value="efetuado">Efetuado</option>
                 <option value="em_processamento">Em Processamento</option>
@@ -243,6 +287,7 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
                 value={formData.inicioContrato}
                 onChange={handleChange}
                 required
+                disabled={loading}
               />
             </Form.Group>
           </Col>
@@ -255,6 +300,7 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
                 value={formData.fimContrato}
                 onChange={handleChange}
                 required
+                disabled={loading}
               />
             </Form.Group>
           </Col>
@@ -270,6 +316,7 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
                 min="1"
                 max="31"
                 required
+                disabled={loading}
               />
             </Form.Group>
           </Col>
@@ -277,7 +324,12 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
 
         <Form.Group className="mb-3">
           <Form.Label>Obra</Form.Label>
-          <Form.Select name="obraId" value={formData.obraId} onChange={handleChange}>
+          <Form.Select 
+            name="obraId" 
+            value={formData.obraId} 
+            onChange={handleChange}
+            disabled={loading}
+          >
             <option value="">Selecione uma obra (opcional)</option>
             {obras.map((obra) => (
               <option key={obra._id} value={obra._id}>
@@ -285,6 +337,11 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
               </option>
             ))}
           </Form.Select>
+          {obraId && (
+            <Form.Text className="text-muted">
+              Obra pré-selecionada do dashboard atual
+            </Form.Text>
+          )}
         </Form.Group>
 
         <Form.Group className="mb-3">
@@ -296,11 +353,17 @@ function MaoObraForm({ onSubmit, onCancel, initialData = null }) {
             value={formData.observacoes}
             onChange={handleChange}
             placeholder="Observações sobre o contrato"
+            disabled={loading}
           />
         </Form.Group>
 
         <div className="d-flex gap-2 mt-4">
-          <Button type="submit" variant="primary" disabled={loading} className="d-flex align-items-center">
+          <Button 
+            type="submit" 
+            variant="primary" 
+            disabled={loading} 
+            className="d-flex align-items-center"
+          >
             <Save size={16} className="me-2" />
             {loading ? "Salvando..." : initialData ? "Atualizar" : "Adicionar Mão de Obra"}
           </Button>

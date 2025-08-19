@@ -28,7 +28,12 @@ import OutroGastoForm from "../components/forms/OutroGastoForm"
 import apiService from "../services/apiService"
 import ObrasApi from "../services/ObrasApi"
 import GoogleSheetsService from "../services/GoogleSheetsService"
+// Importar os componentes de lista
 import ContratosList from "../components/ContratosList"
+import MaterialsList from "../components/MaterialsList"
+import MaoObraList from "../components/MaoObraList"
+import EquipamentosList from "../components/EquipamentosLIst"
+
 
 const ObraDashboard = () => {
   const { id: obraId } = useParams()
@@ -72,23 +77,66 @@ const ObraDashboard = () => {
         apiService.outrosGastos.getAll({ limit: 10000 }),
       ])
 
+      // Log para debug
+      console.log('Respostas das APIs:', {
+        materiais: materiaisRes.status,
+        maoObra: maoObraRes.status,
+        equipamentos: equipamentosRes.status,
+        contratos: contratosRes.status,
+        outrosGastos: outrosGastosRes.status
+      })
+
       // Filtrar gastos por obra
       const filtrarPorObra = (gastos) => {
+        if (!gastos || !Array.isArray(gastos)) return []
+        
         return gastos.filter(gasto => {
-          const gastoObraId = typeof gasto.obraId === 'object' ? gasto.obraId?._id : gasto.obraId
-          return gastoObraId === obraId || (!gasto.obraId && obraId === null)
+          const gastoObraId = typeof gasto.obraId === 'object' && gasto.obraId?._id 
+            ? gasto.obraId._id 
+            : gasto.obraId
+
+          // Log para debug
+          console.log(`Comparando: gastoObraId=${gastoObraId}, obraId=${obraId}`)
+          
+          // Se obraId for null, mostrar gastos sem obra associada
+          if (obraId === null || obraId === 'null') {
+            return !gastoObraId || gastoObraId === null
+          }
+          
+          return gastoObraId === obraId
         })
       }
 
-      console.log('Mão de obra total:', maoObraRes.status === "fulfilled" ? maoObraRes.value.maoObras?.length : 0)
-      console.log('Obra ID:', obraId)
+      // Processar resultados
+      const materiais = materiaisRes.status === "fulfilled" ? 
+        filtrarPorObra(materiaisRes.value.materiais || []) : []
+      
+      const maoObras = maoObraRes.status === "fulfilled" ? 
+        filtrarPorObra(maoObraRes.value.maoObras || []) : []
+      
+      const equipamentos = equipamentosRes.status === "fulfilled" ? 
+        filtrarPorObra(equipamentosRes.value.equipamentos || []) : []
+      
+      const contratos = contratosRes.status === "fulfilled" ? 
+        filtrarPorObra(contratosRes.value.contratos || []) : []
+      
+      const outrosGastos = outrosGastosRes.status === "fulfilled" ? 
+        filtrarPorObra(outrosGastosRes.value.gastos || []) : []
+
+      console.log('Gastos filtrados:', {
+        materiais: materiais.length,
+        maoObras: maoObras.length,
+        equipamentos: equipamentos.length,
+        contratos: contratos.length,
+        outrosGastos: outrosGastos.length
+      })
 
       setGastos({
-        materiais: materiaisRes.status === "fulfilled" ? filtrarPorObra(materiaisRes.value.materiais || []) : [],
-        maoObra: maoObraRes.status === "fulfilled" ? filtrarPorObra(maoObraRes.value.maoObras || []) : [],
-        equipamentos: equipamentosRes.status === "fulfilled" ? filtrarPorObra(equipamentosRes.value.equipamentos || []) : [],
-        contratos: contratosRes.status === "fulfilled" ? filtrarPorObra(contratosRes.value.contratos || []) : [],
-        outrosGastos: outrosGastosRes.status === "fulfilled" ? filtrarPorObra(outrosGastosRes.value.gastos || []) : [],
+        materiais,
+        maoObra: maoObras,
+        equipamentos,
+        contratos,
+        outrosGastos,
       })
     } catch (error) {
       console.error("Erro ao buscar gastos:", error)
@@ -224,50 +272,73 @@ const ObraDashboard = () => {
     const { type, data } = modalConfig
     try {
       const isEdit = data && data._id
-      const payload = { ...formData, obraId }
+      
+      // Para criação, sempre incluir obraId
+      // Para edição, manter o obraId existente ou usar o novo
+      let payload = { ...formData }
+      
+      if (!isEdit) {
+        // Nova criação - sempre associar à obra atual
+        payload.obraId = obraId
+      } else {
+        // Edição - usar obraId do formulário ou manter o existente
+        payload.obraId = formData.obraId || data.obraId || obraId
+      }
 
+      console.log('Payload para envio:', payload)
+      console.log('Tipo:', type, 'É edição:', isEdit)
+
+      let response
       if (type === "obrasForm") {
-        await apiService.obras.update(obraId, formData)
+        response = await apiService.obras.update(obraId, formData)
       } else if (type === "materiaisForm") {
         if (isEdit) {
-          await apiService.materiais.update(data._id, payload)
+          response = await apiService.materiais.update(data._id, payload)
         } else {
-          await apiService.materiais.create(payload)
+          response = await apiService.materiais.create(payload)
         }
       } else if (type === "maoObraForm") {
         if (isEdit) {
-          await apiService.maoObra.update(data._id, payload)
+          response = await apiService.maoObra.update(data._id, payload)
         } else {
-          await apiService.maoObra.create(payload)
+          response = await apiService.maoObra.create(payload)
         }
       } else if (type === "equipamentosForm") {
         if (isEdit) {
-          await apiService.equipamentos.update(data._id, payload)
+          response = await apiService.equipamentos.update(data._id, payload)
         } else {
-          await apiService.equipamentos.create(payload)
+          response = await apiService.equipamentos.create(payload)
         }
       } else if (type === "contratosForm") {
         if (isEdit) {
-          await apiService.contratos.update(data._id, payload)
+          response = await apiService.contratos.update(data._id, payload)
         } else {
-          await apiService.contratos.create(payload)
+          response = await apiService.contratos.create(payload)
         }
       } else if (type === "outrosGastosForm") {
         if (isEdit) {
-          await apiService.outrosGastos.update(data._id, payload)
+          response = await apiService.outrosGastos.update(data._id, payload)
         } else {
-          await apiService.outrosGastos.create(payload)
+          response = await apiService.outrosGastos.create(payload)
         }
       } else {
         throw new Error(`Tipo de formulário desconhecido: ${type}`)
       }
 
+      console.log('Resposta da API:', response)
+
+      if (response.error) {
+        throw new Error(response.message || 'Erro na resposta da API')
+      }
+
       showAlert(`${isEdit ? "Atualizado" : "Adicionado"} com sucesso!`, "success")
       handleCloseModal()
-      fetchData()
+      
+      // Recarregar dados
+      await fetchData()
     } catch (error) {
       console.error("Erro ao salvar:", error)
-      showAlert(error.response?.data?.msg || "Erro ao salvar.", "danger")
+      showAlert(error.response?.data?.message || error.message || "Erro ao salvar.", "danger")
     }
   }
 
@@ -599,41 +670,34 @@ const ObraDashboard = () => {
           </Card>
         </Tab>
         <Tab eventKey="materiais" title={`📦 Materiais (${gastos.materiais.length})`}>
-          <Card>
-            <Card.Body>
-              {renderTable("materiais", gastos.materiais, [
-                { key: "numeroNota", label: "Nota" },
-                { key: "descricao", label: "Descrição" },
-                { key: "localCompra", label: "Local" },
-                { key: "valor", label: "Valor", render: (item) => formatCurrency(item.valor) },
-                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString("pt-BR", { timeZone: "UTC" }) },
-              ])}
-            </Card.Body>
-          </Card>
+          <MaterialsList 
+            obraId={obraId}
+            gastos={gastos}
+            showAddButton={true}
+            onMaterialAdded={() => handleOpenModal("materiaisForm")}
+            onEditMaterial={(material) => handleOpenModal("materiaisForm", material)}
+            onDeleteMaterial={(materialId) => handleDelete("materiais", materialId)}
+          />
         </Tab>
         <Tab eventKey="maoObra" title={`👷 Mão de Obra (${gastos.maoObra.length})`}>
-          <Card>
-            <Card.Body>
-              {renderTable("maoObra", gastos.maoObra, [
-                { key: "nome", label: "Nome" },
-                { key: "funcao", label: "Função" },
-                { key: "valor", label: "Valor", render: (item) => formatCurrency(item.valor) },
-                { key: "status", label: "Status", render: (item) => <Badge bg="primary">{item.status}</Badge> },
-              ])}
-            </Card.Body>
-          </Card>
+          <MaoObraList 
+            obraId={obraId}
+            gastos={gastos}
+            showAddButton={true}
+            onMaoObraAdded={() => handleOpenModal("maoObraForm")}
+            onEditMaoObra={(maoObra) => handleOpenModal("maoObraForm", maoObra)}
+            onDeleteMaoObra={(maoObraId) => handleDelete("maoObra", maoObraId)}
+          />
         </Tab>
         <Tab eventKey="equipamentos" title={`🔧 Equipamentos (${gastos.equipamentos.length})`}>
-          <Card>
-            <Card.Body>
-              {renderTable("equipamentos", gastos.equipamentos, [
-                { key: "item", label: "Item" },
-                { key: "tipoContratacao", label: "Tipo" },
-                { key: "valor", label: "Valor", render: (item) => formatCurrency(item.valor) },
-                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString("pt-BR", { timeZone: "UTC" }) },
-              ])}
-            </Card.Body>
-          </Card>
+          <EquipamentosList 
+            obraId={obraId}
+            gastos={gastos}
+            showAddButton={true}
+            onEquipamentoAdded={() => handleOpenModal("equipamentosForm")}
+            onEditEquipamento={(equipamento) => handleOpenModal("equipamentosForm", equipamento)}
+            onDeleteEquipamento={(equipamentoId) => handleDelete("equipamentos", equipamentoId)}
+          />
         </Tab>
         <Tab eventKey="contratos" title={`📄 Contratos (${gastos.contratos.length})`}>
           <ContratosList 
