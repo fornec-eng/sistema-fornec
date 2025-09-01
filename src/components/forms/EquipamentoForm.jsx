@@ -5,7 +5,7 @@ import { Form, Button, Alert, Row, Col } from "react-bootstrap"
 import { Save, X } from "lucide-react"
 import apiService from "../../services/apiService"
 
-function EquipamentoForm({ onSubmit, onCancel, initialData = null }) {
+function EquipamentoForm({ onSubmit, onCancel, initialData = null, obraId = null }) {
   const [formData, setFormData] = useState({
     numeroNota: "",
     item: "",
@@ -20,7 +20,7 @@ function EquipamentoForm({ onSubmit, onCancel, initialData = null }) {
     parcelas: "",
     diaPagamento: "",
     observacoes: "",
-    obraId: "",
+    obraId: obraId || "",
   })
 
   const [obras, setObras] = useState([])
@@ -33,9 +33,15 @@ function EquipamentoForm({ onSubmit, onCancel, initialData = null }) {
       setFormData({
         ...initialData,
         data: initialData.data ? new Date(initialData.data).toISOString().split("T")[0] : "",
+        obraId: initialData.obraId || obraId || "",
       })
+    } else if (obraId) {
+      setFormData((prev) => ({
+        ...prev,
+        obraId: obraId,
+      }))
     }
-  }, [initialData])
+  }, [initialData, obraId])
 
   const fetchObras = async () => {
     try {
@@ -148,7 +154,7 @@ function EquipamentoForm({ onSubmit, onCancel, initialData = null }) {
       parcelas: "",
       diaPagamento: "",
       observacoes: "",
-      obraId: "",
+      obraId: obraId || "",
     })
     setError("")
 
@@ -340,6 +346,7 @@ function EquipamentoForm({ onSubmit, onCancel, initialData = null }) {
               </option>
             ))}
           </Form.Select>
+          {obraId && <Form.Text className="text-muted">Obra pré-selecionada do dashboard atual</Form.Text>}
         </Form.Group>
 
         <Form.Group className="mb-3">

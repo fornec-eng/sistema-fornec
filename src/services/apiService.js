@@ -171,6 +171,30 @@ class ApiService {
     },
   }
 
+  // Entradas
+  entradas = {
+    getAll: async (params = {}) => {
+      const response = await ApiBase.get("/entradas", { params })
+      return response.data
+    },
+    getById: async (id) => {
+      const response = await ApiBase.get(`/entradas/${id}`)
+      return response.data
+    },
+    create: async (data) => {
+      const response = await ApiBase.post("/entradas", data)
+      return response.data
+    },
+    update: async (id, data) => {
+      const response = await ApiBase.put(`/entradas/${id}`, data)
+      return response.data
+    },
+    delete: async (id) => {
+      const response = await ApiBase.delete(`/entradas/${id}`)
+      return response.data
+    },
+  }
+
   // ==================== MÉTODOS ESPECIAIS ====================
 
   /**

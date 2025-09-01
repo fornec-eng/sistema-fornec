@@ -5,16 +5,12 @@ import { Form, Button, Alert, Row, Col } from "react-bootstrap"
 import { Save, X } from "lucide-react"
 import apiService from "../../services/apiService"
 
-function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null }) {
+function EntradaForm({ onSubmit, onCancel, initialData = null, obraId = null }) {
   const [formData, setFormData] = useState({
-    numeroNota: "",
+    nome: "",
     data: "",
-    localCompra: "",
     valor: "",
-    solicitante: "",
-    formaPagamento: "pix",
-    statusPagamento: "pendente",
-    descricao: "",
+    statusRecebimento: "recebido",
     observacoes: "",
     obraId: obraId || "",
   })
@@ -63,9 +59,8 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
     setLoading(true)
     setError("")
 
-    // Validações básicas
-    if (!formData.numeroNota.trim()) {
-      setError("Número da nota é obrigatório")
+    if (!formData.nome.trim()) {
+      setError("Nome da entrada é obrigatório")
       setLoading(false)
       return
     }
@@ -76,20 +71,8 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
       return
     }
 
-    if (!formData.localCompra.trim()) {
-      setError("Local da compra é obrigatório")
-      setLoading(false)
-      return
-    }
-
     if (!formData.valor || Number.parseFloat(formData.valor) <= 0) {
       setError("Valor deve ser maior que zero")
-      setLoading(false)
-      return
-    }
-
-    if (!formData.solicitante.trim()) {
-      setError("Solicitante é obrigatório")
       setLoading(false)
       return
     }
@@ -100,33 +83,26 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
         valor: Number.parseFloat(formData.valor),
       }
 
-      // Apenas chama o onSubmit passado como prop, não salva diretamente
       await onSubmit(dataToSubmit)
     } catch (error) {
-      console.error("Erro ao salvar material:", error)
-      setError("Erro ao salvar material. Tente novamente.")
+      console.error("Erro ao salvar entrada:", error)
+      setError("Erro ao salvar entrada. Tente novamente.")
     } finally {
       setLoading(false)
     }
   }
 
   const handleCancel = () => {
-    // Resetar formulário
     setFormData({
-      numeroNota: "",
+      nome: "",
       data: "",
-      localCompra: "",
       valor: "",
-      solicitante: "",
-      formaPagamento: "pix",
-      statusPagamento: "pendente",
-      descricao: "",
+      statusRecebimento: "recebido",
       observacoes: "",
       obraId: obraId || "",
     })
     setError("")
 
-    // Chamar callback de cancelamento se fornecido
     if (onCancel) {
       onCancel()
     }
@@ -144,13 +120,13 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
         <Row>
           <Col md={6}>
             <Form.Group className="mb-3">
-              <Form.Label>Número da Nota *</Form.Label>
+              <Form.Label>Nome da Entrada *</Form.Label>
               <Form.Control
                 type="text"
-                name="numeroNota"
-                value={formData.numeroNota}
+                name="nome"
+                value={formData.nome}
                 onChange={handleChange}
-                placeholder="Ex: NF-001234"
+                placeholder="Ex: Pagamento Cliente ABC"
                 required
               />
             </Form.Group>
@@ -166,19 +142,6 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
         <Row>
           <Col md={6}>
             <Form.Group className="mb-3">
-              <Form.Label>Local da Compra *</Form.Label>
-              <Form.Control
-                type="text"
-                name="localCompra"
-                value={formData.localCompra}
-                onChange={handleChange}
-                placeholder="Ex: Loja de Materiais ABC"
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={6}>
-            <Form.Group className="mb-3">
               <Form.Label>Valor *</Form.Label>
               <Form.Control
                 type="number"
@@ -192,42 +155,12 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
               />
             </Form.Group>
           </Col>
-        </Row>
-
-        <Row>
-          <Col md={4}>
+          <Col md={6}>
             <Form.Group className="mb-3">
-              <Form.Label>Solicitante *</Form.Label>
-              <Form.Control
-                type="text"
-                name="solicitante"
-                value={formData.solicitante}
-                onChange={handleChange}
-                placeholder="Nome do solicitante"
-                required
-              />
-            </Form.Group>
-          </Col>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Forma de Pagamento *</Form.Label>
-              <Form.Select name="formaPagamento" value={formData.formaPagamento} onChange={handleChange} required>
-                <option value="pix">PIX</option>
-                <option value="transferencia">Transferência</option>
-                <option value="avista">À Vista</option>
-                <option value="cartao">Cartão</option>
-                <option value="boleto">Boleto</option>
-                <option value="cheque">Cheque</option>
-                <option value="outro">Outro</option>
-              </Form.Select>
-            </Form.Group>
-          </Col>
-          <Col md={4}>
-            <Form.Group className="mb-3">
-              <Form.Label>Status do Pagamento *</Form.Label>
-              <Form.Select name="statusPagamento" value={formData.statusPagamento} onChange={handleChange} required>
+              <Form.Label>Status do Recebimento *</Form.Label>
+              <Form.Select name="statusRecebimento" value={formData.statusRecebimento} onChange={handleChange} required>
+                <option value="recebido">Recebido</option>
                 <option value="pendente">Pendente</option>
-                <option value="efetuado">Efetuado</option>
                 <option value="em_processamento">Em Processamento</option>
                 <option value="cancelado">Cancelado</option>
                 <option value="atrasado">Atrasado</option>
@@ -239,7 +172,7 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
         <Form.Group className="mb-3">
           <Form.Label>Obra</Form.Label>
           <Form.Select name="obraId" value={formData.obraId} onChange={handleChange}>
-            <option value="">Selecione uma obra (opcional)</option>
+            <option value="">Entrada geral da empresa (sem obra específica)</option>
             {obras.map((obra) => (
               <option key={obra._id} value={obra._id}>
                 {obra.nome}
@@ -250,33 +183,21 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
         </Form.Group>
 
         <Form.Group className="mb-3">
-          <Form.Label>Descrição</Form.Label>
-          <Form.Control
-            as="textarea"
-            rows={2}
-            name="descricao"
-            value={formData.descricao}
-            onChange={handleChange}
-            placeholder="Descrição dos materiais comprados"
-          />
-        </Form.Group>
-
-        <Form.Group className="mb-3">
           <Form.Label>Observações</Form.Label>
           <Form.Control
             as="textarea"
-            rows={2}
+            rows={3}
             name="observacoes"
             value={formData.observacoes}
             onChange={handleChange}
-            placeholder="Observações adicionais"
+            placeholder="Observações sobre a entrada (cliente, forma de pagamento, etc.)"
           />
         </Form.Group>
 
         <div className="d-flex gap-2 mt-4">
-          <Button type="submit" variant="primary" disabled={loading} className="d-flex align-items-center">
+          <Button type="submit" variant="success" disabled={loading} className="d-flex align-items-center">
             <Save size={16} className="me-2" />
-            {loading ? "Salvando..." : initialData ? "Atualizar" : "Adicionar Material"}
+            {loading ? "Salvando..." : initialData ? "Atualizar" : "Adicionar Entrada"}
           </Button>
 
           <Button
@@ -295,4 +216,4 @@ function MaterialForm({ onSubmit, onCancel, initialData = null, obraId = null })
   )
 }
 
-export default MaterialForm
+export default EntradaForm

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { Container, Row, Col, Spinner, Button, Tabs, Tab, Card, Alert } from "react-bootstrap"
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from "chart.js"
 import ChartDataLabels from "chartjs-plugin-datalabels"
-import { AlertCircle, Calendar, TrendingUp, Home, Plus } from "lucide-react"
+import { AlertCircle, Calendar, TrendingUp, Home, Plus, ArrowDownCircle } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import apiService from "../services/apiService"
 
@@ -15,9 +15,10 @@ import TabelaGastosCompleta from "../components/financeiro/TabelaGastosCompleta"
 import EditGastoModal from "../components/financeiro/EditGastoModal"
 import DeleteGastoModal from "../components/financeiro/DeleteGastoModal"
 import ContratosResumo from "../components/financeiro/ContratosResumo"
+import EntradasList from "../components/EntradasList"
+import EntradaModal from "../components/modals/EntradaModal"
 
 import { FileText } from "lucide-react" // Novo ícone para contratos
-
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend, ChartDataLabels)
 
@@ -42,6 +43,10 @@ const Financeiro = () => {
 
   const [obras, setObras] = useState([])
 
+  const [showEntradaModal, setShowEntradaModal] = useState(false)
+  const [editingEntrada, setEditingEntrada] = useState(null)
+  const [entradas, setEntradas] = useState([])
+  const [loadingEntradas, setLoadingEntradas] = useState(false)
 
   const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
@@ -95,19 +100,36 @@ const Financeiro = () => {
     })
   }
 
+  const fetchEntradas = async () => {
+    setLoadingEntradas(true)
+    try {
+      const response = await apiService.entradas.getAll({ limit: 60000 })
+      if (!response.error) {
+        setEntradas(response.entradas || [])
+      }
+    } catch (error) {
+      console.error("Erro ao buscar entradas:", error)
+      showAlert("Erro ao carregar entradas", "warning")
+    } finally {
+      setLoadingEntradas(false)
+    }
+  }
+
   const fetchAllData = async () => {
     setLoading(true)
     setError(null)
     try {
-      const params = { limit: 10000 }
-      const [obrasRes, materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
-        apiService.obras.getAll(),
-        apiService.materiais.getAll(params),
-        apiService.maoObra.getAll(params),
-        apiService.equipamentos.getAll(params),
-        apiService.contratos.getAll(params),
-        apiService.outrosGastos.getAll(params),
-      ])
+      const params = { limit: 60000 }
+      const [obrasRes, materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes, entradasRes] =
+        await Promise.all([
+          apiService.obras.getAll(),
+          apiService.materiais.getAll(params),
+          apiService.maoObra.getAll(params),
+          apiService.equipamentos.getAll(params),
+          apiService.contratos.getAll(params),
+          apiService.outrosGastos.getAll(params),
+          apiService.entradas.getAll(params),
+        ])
 
       const obras = obrasRes.obras || []
       const gastos = [
@@ -118,8 +140,12 @@ const Financeiro = () => {
         ...(outrosGastosRes.gastos || []),
       ]
 
+      const entradas = entradasRes.entradas || []
+      setEntradas(entradas)
+
       const totalOrcamento = obras.reduce((acc, obra) => acc + (obra.valorContrato || 0), 0)
       const totalGasto = gastos.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
+      const totalEntradas = entradas.reduce((acc, entrada) => acc + (entrada.valor || 0), 0)
 
       const gastosPorCategoria = {
         Materiais: (materiaisRes.materiais || []).reduce((acc, item) => acc + (item.valor || 0), 0),
@@ -138,7 +164,9 @@ const Financeiro = () => {
       setStats({
         totalOrcamento,
         totalGasto,
+        totalEntradas,
         saldoGeral: totalOrcamento - totalGasto,
+        saldoComEntradas: totalOrcamento + totalEntradas - totalGasto,
         gastosPorCategoria,
         gastosPorObra,
         totalObras: obras.length,
@@ -155,7 +183,7 @@ const Financeiro = () => {
 
   const organizarGastosPorObra = async () => {
     try {
-      const params = { limit: 10000 }
+      const params = { limit: 60000 }
       const [obrasRes, materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
         apiService.obras.getAll(params),
         apiService.materiais.getAll(params),
@@ -234,6 +262,8 @@ const Financeiro = () => {
   useEffect(() => {
     if (activeTab === "agenda") {
       fetchGastosFuturos()
+    } else if (activeTab === "entradas") {
+      fetchEntradas()
     }
   }, [activeTab])
 
@@ -268,28 +298,78 @@ const Financeiro = () => {
 
   const handleEditSubmit = async (formData) => {
     if (!editingItem) return
+
     const serviceMap = {
+      // Plural forms (current)
       Materiais: apiService.materiais,
       "Mão de Obra": apiService.maoObra,
       Equipamentos: apiService.equipamentos,
       Contratos: apiService.contratos,
       Outros: apiService.outrosGastos,
+      // Singular forms (from API)
+      Material: apiService.materiais,
+      "Mao de Obra": apiService.maoObra,
+      MaoObra: apiService.maoObra,
+      Equipamento: apiService.equipamentos,
+      Contrato: apiService.contratos,
+      Outro: apiService.outrosGastos,
+      "Outros Gastos": apiService.outrosGastos,
+      OutrosGastos: apiService.outrosGastos,
     }
+
+    console.log("[v0] Item type received:", editingItem.tipo)
+    console.log("[v0] Available service mappings:", Object.keys(serviceMap))
+
     const service = serviceMap[editingItem.tipo]
     if (service) {
       try {
-        const dataToSubmit = { ...formData, obraId: formData.obraId || editingItem.obraId }
-        await service.update(editingItem._id, dataToSubmit)
+        console.log("[v0] Editing item:", editingItem)
+        console.log("[v0] Form data received:", formData)
+
+        // Prepare data for update - ensure we have the ID and all required fields
+        const dataToSubmit = {
+          ...formData,
+          _id: editingItem._id,
+          obraId: formData.obraId || editingItem.obraId,
+        }
+
+        console.log("[v0] Data being sent to API:", dataToSubmit)
+
+        const response = await service.update(editingItem._id, dataToSubmit)
+        console.log("[v0] API response:", response)
+
+        if (response.error) {
+          throw new Error(response.message || "Erro na atualização")
+        }
+
         showAlert("Item atualizado com sucesso!", "success")
         handleCloseEditModal()
-        fetchAllData()
-        fetchGastosFuturos()
+
+        // Refresh all data
+        await fetchAllData()
+        if (activeTab === "agenda") {
+          await fetchGastosFuturos()
+        }
+
+        // Refresh details
         const detalhes = await organizarGastosPorObra()
         setDetalhesGastos(detalhes)
       } catch (error) {
-        console.error("Erro ao atualizar item:", error)
-        showAlert("Erro ao atualizar item.", "danger")
+        console.error("[v0] Error updating item:", error)
+        showAlert(
+          error.response?.data?.message ||
+            error.message ||
+            "Erro ao atualizar item. Verifique os dados e tente novamente.",
+          "danger",
+        )
       }
+    } else {
+      console.error("[v0] No service found for item type:", editingItem.tipo)
+      console.error("[v0] Available mappings:", Object.keys(serviceMap))
+      showAlert(
+        `Tipo de item não reconhecido para edição: "${editingItem.tipo}". Tipos disponíveis: ${Object.keys(serviceMap).join(", ")}`,
+        "danger",
+      )
     }
   }
 
@@ -427,6 +507,36 @@ const Financeiro = () => {
     return config[status] || config.pendente
   }
 
+  const handleOpenEntradaModal = (entrada = null) => {
+    setEditingEntrada(entrada)
+    setShowEntradaModal(true)
+  }
+
+  const handleCloseEntradaModal = () => {
+    setEditingEntrada(null)
+    setShowEntradaModal(false)
+  }
+
+  const handleEntradaSuccess = (entrada) => {
+    showAlert(`Entrada ${editingEntrada ? "atualizada" : "adicionada"} com sucesso!`, "success")
+    fetchAllData() // Refresh all data including stats
+    fetchEntradas() // Refresh entradas list
+  }
+
+  const handleDeleteEntrada = async (entradaId) => {
+    if (window.confirm("Tem certeza que deseja excluir esta entrada?")) {
+      try {
+        await apiService.entradas.delete(entradaId)
+        showAlert("Entrada excluída com sucesso!", "success")
+        fetchAllData()
+        fetchEntradas()
+      } catch (error) {
+        console.error("Erro ao excluir entrada:", error)
+        showAlert("Erro ao excluir entrada.", "danger")
+      }
+    }
+  }
+
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: "300px" }}>
@@ -459,21 +569,23 @@ const Financeiro = () => {
           </div>
         )}
 
-        <Row className="mb-3">
+        <Row className="mb-4 align-items-center">
           <Col xs="auto">
             <Button variant="primary" size="sm" onClick={() => navigate("/home")}>
               <Home size={16} className="me-2" />
               Início
             </Button>
           </Col>
-        </Row>
-        <Row className="mb-4 align-items-center">
           <Col>
             <h1 className="mb-0">Painel Financeiro</h1>
             <p className="text-muted">Visão geral das finanças e agenda de gastos futuros.</p>
           </Col>
-          <Col xs="auto">
-            <Button variant="success" onClick={() => navigate("/adicionar-pagamentos")}>
+          <Col xs="auto" className="d-flex gap-2">
+            <Button variant="success" onClick={() => handleOpenEntradaModal()}>
+              <Plus size={16} className="me-2" />
+              Adicionar Nova Entrada
+            </Button>
+            <Button variant="primary" onClick={() => navigate("/adicionar-pagamentos")}>
               <Plus size={16} className="me-2" />
               Adicionar Novo Gasto
             </Button>
@@ -534,6 +646,23 @@ const Financeiro = () => {
             />
           </Tab>
           <Tab
+            eventKey="entradas"
+            title={
+              <span>
+                <ArrowDownCircle size={16} className="me-2" />
+                Entradas
+              </span>
+            }
+          >
+            <EntradasList
+              gastos={{ entradas }}
+              showAddButton={true}
+              onEntradaAdded={() => handleOpenEntradaModal()}
+              onEditEntrada={(entrada) => handleOpenEntradaModal(entrada)}
+              onDeleteEntrada={handleDeleteEntrada}
+            />
+          </Tab>
+          <Tab
             eventKey="contratos"
             title={
               <span>
@@ -562,6 +691,13 @@ const Financeiro = () => {
         onSubmit={handleDeleteSubmit}
         isDeleting={isDeleting}
         formatCurrency={formatCurrency}
+      />
+
+      <EntradaModal
+        show={showEntradaModal}
+        onHide={handleCloseEntradaModal}
+        onSuccess={handleEntradaSuccess}
+        initialData={editingEntrada}
       />
     </>
   )

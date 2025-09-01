@@ -18,6 +18,7 @@ const ObrasAtivas = () => {
   const [showModal, setShowModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [obraToDelete, setObraToDelete] = useState(null)
+  const [obraToEdit, setObraToEdit] = useState(null)
   const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
   const showAlert = (message, variant = "success", duration = 5000) => {
@@ -28,7 +29,6 @@ const ObrasAtivas = () => {
   const fetchObras = useCallback(async () => {
     setLoading(true)
     try {
-      // Etapa 1: Buscar todas as obras e todas as despesas em paralelo
       const [obrasResponse, materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] =
         await Promise.all([
           apiService.obras.getAll(),
@@ -48,7 +48,6 @@ const ObrasAtivas = () => {
       const obras = obrasResponse.obras || []
       setObras(obras)
 
-      // Etapa 2: Combinar todas as despesas em um único array
       const todosGastos = [
         ...(materiaisRes.materiais || []),
         ...(maoObraRes.maoObras || []),
@@ -57,7 +56,6 @@ const ObrasAtivas = () => {
         ...(outrosGastosRes.gastos || []),
       ]
 
-      // Função auxiliar para filtrar despesas por obraId
       const filtrarGastosPorObra = (obraId) => {
         return todosGastos.filter((gasto) => {
           const gastoObraId = typeof gasto.obraId === "object" ? gasto.obraId?._id : gasto.obraId
@@ -65,7 +63,6 @@ const ObrasAtivas = () => {
         })
       }
 
-      // Etapa 3: Mapear as obras para calcular seus totais a partir da lista de despesas combinada
       const obrasComGastosCalculados = obras.map((obra) => {
         const gastosDaObra = filtrarGastosPorObra(obra._id)
         const totalGastos = gastosDaObra.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
@@ -94,42 +91,51 @@ const ObrasAtivas = () => {
   const handleCreateObra = async (formData) => {
     setIsSubmitting(true)
     try {
-      // 1. Primeiro criar a planilha no Google Sheets
-      showAlert("Criando planilha no Google Sheets...", "info")
+      if (obraToEdit) {
+        const response = await apiService.obras.update(obraToEdit._id, formData)
 
-      const planilhaResponse = await GoogleSheetsService.criarPlanilhaObra(formData.nome, formData)
-
-      if (!planilhaResponse || !planilhaResponse.spreadsheetId) {
-        throw new Error("Erro ao criar planilha no Google Sheets")
-      }
-
-      showAlert("Planilha criada com sucesso! Criando obra...", "info")
-
-      // 2. Adicionar o spreadsheetId aos dados da obra
-      const dadosObraComPlanilha = {
-        ...formData,
-        spreadsheetId: planilhaResponse.spreadsheetId,
-        spreadsheetUrl: planilhaResponse.url,
-      }
-
-      // 3. Criar a obra na API já com o spreadsheetId
-      const response = await apiService.obras.create(dadosObraComPlanilha)
-
-      if (!response.error) {
-        showAlert(`Obra "${formData.nome}" criada com sucesso e planilha associada!`, "success")
-        setShowModal(false)
-        fetchObras() // Recarregar lista
+        if (!response.error) {
+          showAlert(`Obra "${formData.nome}" atualizada com sucesso!`, "success")
+          setShowModal(false)
+          setObraToEdit(null)
+          fetchObras()
+        } else {
+          showAlert(response.message || "Erro ao atualizar obra.", "danger")
+        }
       } else {
-        // Se falhou ao criar a obra, mas a planilha foi criada, informar ao usuário
-        showAlert(`Planilha criada, mas erro ao salvar obra: ${response.message || "Erro desconhecido"}`, "warning")
+        showAlert("Criando planilha no Google Sheets...", "info")
+
+        const planilhaResponse = await GoogleSheetsService.criarPlanilhaObra(formData.nome, formData)
+
+        if (!planilhaResponse || !planilhaResponse.spreadsheetId) {
+          throw new Error("Erro ao criar planilha no Google Sheets")
+        }
+
+        showAlert("Planilha criada com sucesso! Criando obra...", "info")
+
+        const dadosObraComPlanilha = {
+          ...formData,
+          spreadsheetId: planilhaResponse.spreadsheetId,
+          spreadsheetUrl: planilhaResponse.url,
+        }
+
+        const response = await apiService.obras.create(dadosObraComPlanilha)
+
+        if (!response.error) {
+          showAlert(`Obra "${formData.nome}" criada com sucesso e planilha associada!`, "success")
+          setShowModal(false)
+          fetchObras()
+        } else {
+          showAlert(`Planilha criada, mas erro ao salvar obra: ${response.message || "Erro desconhecido"}`, "warning")
+        }
       }
     } catch (error) {
-      console.error("Erro no fluxo de criação da obra:", error)
+      console.error("Erro no fluxo de criação/edição da obra:", error)
 
       if (error.message?.includes("planilha")) {
         showAlert("Erro ao criar planilha no Google Sheets. Tente novamente.", "danger")
       } else {
-        showAlert(error.response?.data?.msg || error.message || "Erro ao criar obra. Tente novamente.", "danger")
+        showAlert(error.response?.data?.msg || error.message || "Erro ao salvar obra. Tente novamente.", "danger")
       }
     } finally {
       setIsSubmitting(false)
@@ -149,7 +155,7 @@ const ObrasAtivas = () => {
         showAlert(`Obra "${obraToDelete.nome}" excluída com sucesso!`, "success")
         setShowDeleteModal(false)
         setObraToDelete(null)
-        fetchObras() // Recarregar lista
+        fetchObras()
       } else {
         showAlert(response.message || "Erro ao excluir obra.", "danger")
       }
@@ -159,6 +165,16 @@ const ObrasAtivas = () => {
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  const handleEditObra = (obra) => {
+    setObraToEdit(obra)
+    setShowModal(true)
+  }
+
+  const handleCloseModal = () => {
+    setShowModal(false)
+    setObraToEdit(null)
   }
 
   const confirmDeleteObra = (obra) => {
@@ -201,22 +217,25 @@ const ObrasAtivas = () => {
 
   return (
     <Container className="mt-4 mb-5">
-      <Row className="mb-3">
-        <Col xs="auto">
-          <Link to="/home">
-            <Button variant="primary" size="sm">
-              <Home size={16} className="me-2" />
-              Início
-            </Button>
-          </Link>
-        </Col>
-      </Row>
+      
       <Row className="mb-4 align-items-center">
-        <Col>
+
+        <Col >
+          <Link to="/home">
+                  <Button variant="primary" size="sm">
+                    <Home size={16} className="me-2" />
+                    Início
+                  </Button>
+                </Link> 
+        
+        </Col>
+        
+        <Col >
           <h1 className="mb-0">Obras</h1>
           <p className="text-muted">Gerencie e acompanhe todos os seus projetos.</p>
         </Col>
-        <Col xs="auto">
+        <Col>
+          
           <Button variant="primary" onClick={() => setShowModal(true)}>
             <Plus size={16} className="me-2" />
             Nova Obra
@@ -252,6 +271,10 @@ const ObrasAtivas = () => {
                           <MoreVertical size={16} />
                         </Dropdown.Toggle>
                         <Dropdown.Menu>
+                          <Dropdown.Item onClick={() => handleEditObra(obra)}>
+                            <Eye size={16} className="me-2" />
+                            Editar Obra
+                          </Dropdown.Item>
                           <Dropdown.Item onClick={() => confirmDeleteObra(obra)} className="text-danger">
                             <Trash2 size={16} className="me-2" />
                             Excluir Obra
@@ -327,17 +350,20 @@ const ObrasAtivas = () => {
         </Row>
       )}
 
-      {/* Modal de Criação */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" centered>
+      <Modal show={showModal} onHide={handleCloseModal} size="lg" centered>
         <Modal.Header closeButton>
-          <Modal.Title>Criar Nova Obra</Modal.Title>
+          <Modal.Title>{obraToEdit ? "Editar Obra" : "Criar Nova Obra"}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <ObraForm onSubmit={handleCreateObra} isLoading={isSubmitting} onCancel={() => setShowModal(false)} />
+          <ObraForm
+            onSubmit={handleCreateObra}
+            initialData={obraToEdit}
+            isLoading={isSubmitting}
+            onCancel={handleCloseModal}
+          />
         </Modal.Body>
       </Modal>
 
-      {/* Modal de Confirmação de Exclusão */}
       <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="text-danger">Confirmar Exclusão</Modal.Title>

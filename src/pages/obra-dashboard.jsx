@@ -25,6 +25,7 @@ import MaoObraForm from "../components/forms/MaoObraForm"
 import EquipamentoForm from "../components/forms/EquipamentoForm"
 import ContratoForm from "../components/forms/ContratoForm"
 import OutroGastoForm from "../components/forms/OutroGastoForm"
+import EntradaForm from "../components/forms/EntradaForm"
 import apiService from "../services/apiService"
 import ObrasApi from "../services/ObrasApi"
 import GoogleSheetsService from "../services/GoogleSheetsService"
@@ -33,7 +34,7 @@ import ContratosList from "../components/ContratosList"
 import MaterialsList from "../components/MaterialsList"
 import MaoObraList from "../components/MaoObraList"
 import EquipamentosList from "../components/EquipamentosLIst"
-
+import EntradasList from "../components/EntradasList"
 
 const ObraDashboard = () => {
   const { id: obraId } = useParams()
@@ -46,6 +47,7 @@ const ObraDashboard = () => {
     equipamentos: [],
     contratos: [],
     outrosGastos: [],
+    entradas: [],
   })
   const [cronograma, setCronograma] = useState([])
   const [relatorio, setRelatorio] = useState(null)
@@ -69,66 +71,67 @@ const ObraDashboard = () => {
       console.log(`Buscando gastos para a obra ID: ${obraId}`)
 
       // Buscar gastos diretamente do banco de dados usando apiService
-      const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.allSettled([
-        apiService.materiais.getAll({ limit: 10000 }),
-        apiService.maoObra.getAll({ limit: 10000 }),
-        apiService.equipamentos.getAll({ limit: 10000 }),
-        apiService.contratos.getAll({ limit: 10000 }),
-        apiService.outrosGastos.getAll({ limit: 10000 }),
-      ])
+      const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes, entradasRes] =
+        await Promise.allSettled([
+          apiService.materiais.getAll({ limit: 10000 }),
+          apiService.maoObra.getAll({ limit: 10000 }),
+          apiService.equipamentos.getAll({ limit: 10000 }),
+          apiService.contratos.getAll({ limit: 10000 }),
+          apiService.outrosGastos.getAll({ limit: 10000 }),
+          apiService.entradas.getAll({ limit: 10000 }),
+        ])
 
       // Log para debug
-      console.log('Respostas das APIs:', {
+      console.log("Respostas das APIs:", {
         materiais: materiaisRes.status,
         maoObra: maoObraRes.status,
         equipamentos: equipamentosRes.status,
         contratos: contratosRes.status,
-        outrosGastos: outrosGastosRes.status
+        outrosGastos: outrosGastosRes.status,
+        entradas: entradasRes.status,
       })
 
       // Filtrar gastos por obra
       const filtrarPorObra = (gastos) => {
         if (!gastos || !Array.isArray(gastos)) return []
-        
-        return gastos.filter(gasto => {
-          const gastoObraId = typeof gasto.obraId === 'object' && gasto.obraId?._id 
-            ? gasto.obraId._id 
-            : gasto.obraId
+
+        return gastos.filter((gasto) => {
+          const gastoObraId = typeof gasto.obraId === "object" && gasto.obraId?._id ? gasto.obraId._id : gasto.obraId
 
           // Log para debug
           console.log(`Comparando: gastoObraId=${gastoObraId}, obraId=${obraId}`)
-          
+
           // Se obraId for null, mostrar gastos sem obra associada
-          if (obraId === null || obraId === 'null') {
+          if (obraId === null || obraId === "null") {
             return !gastoObraId || gastoObraId === null
           }
-          
+
           return gastoObraId === obraId
         })
       }
 
       // Processar resultados
-      const materiais = materiaisRes.status === "fulfilled" ? 
-        filtrarPorObra(materiaisRes.value.materiais || []) : []
-      
-      const maoObras = maoObraRes.status === "fulfilled" ? 
-        filtrarPorObra(maoObraRes.value.maoObras || []) : []
-      
-      const equipamentos = equipamentosRes.status === "fulfilled" ? 
-        filtrarPorObra(equipamentosRes.value.equipamentos || []) : []
-      
-      const contratos = contratosRes.status === "fulfilled" ? 
-        filtrarPorObra(contratosRes.value.contratos || []) : []
-      
-      const outrosGastos = outrosGastosRes.status === "fulfilled" ? 
-        filtrarPorObra(outrosGastosRes.value.gastos || []) : []
+      const materiais = materiaisRes.status === "fulfilled" ? filtrarPorObra(materiaisRes.value.materiais || []) : []
 
-      console.log('Gastos filtrados:', {
+      const maoObras = maoObraRes.status === "fulfilled" ? filtrarPorObra(maoObraRes.value.maoObras || []) : []
+
+      const equipamentos =
+        equipamentosRes.status === "fulfilled" ? filtrarPorObra(equipamentosRes.value.equipamentos || []) : []
+
+      const contratos = contratosRes.status === "fulfilled" ? filtrarPorObra(contratosRes.value.contratos || []) : []
+
+      const outrosGastos =
+        outrosGastosRes.status === "fulfilled" ? filtrarPorObra(outrosGastosRes.value.gastos || []) : []
+
+      const entradas = entradasRes.status === "fulfilled" ? filtrarPorObra(entradasRes.value.entradas || []) : []
+
+      console.log("Gastos filtrados:", {
         materiais: materiais.length,
         maoObras: maoObras.length,
         equipamentos: equipamentos.length,
         contratos: contratos.length,
-        outrosGastos: outrosGastos.length
+        outrosGastos: outrosGastos.length,
+        entradas: entradas.length,
       })
 
       setGastos({
@@ -137,6 +140,7 @@ const ObraDashboard = () => {
         equipamentos,
         contratos,
         outrosGastos,
+        entradas,
       })
     } catch (error) {
       console.error("Erro ao buscar gastos:", error)
@@ -242,17 +246,21 @@ const ObraDashboard = () => {
         ...(gastos.outrosGastos || []),
       ]
 
+      const totalEntradas = (gastos.entradas || []).reduce((acc, entrada) => acc + (entrada.valor || 0), 0)
       const totalGeral = todosGastos.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
 
       setRelatorio({
         totalGeral,
+        totalEntradas,
         saldo: (obra.valorContrato || 0) - totalGeral,
+        saldoComEntradas: (obra.valorContrato || 0) + totalEntradas - totalGeral,
         gastosPorTipo: {
           materiais: (gastos.materiais || []).reduce((acc, item) => acc + (item.valor || 0), 0),
           maoObra: (gastos.maoObra || []).reduce((acc, item) => acc + (item.valor || 0), 0),
           equipamentos: (gastos.equipamentos || []).reduce((acc, item) => acc + (item.valor || 0), 0),
           contratos: (gastos.contratos || []).reduce((acc, item) => acc + (item.valor || 0), 0),
           outrosGastos: (gastos.outrosGastos || []).reduce((acc, item) => acc + (item.valor || 0), 0),
+          entradas: totalEntradas,
         },
       })
     }
@@ -272,11 +280,11 @@ const ObraDashboard = () => {
     const { type, data } = modalConfig
     try {
       const isEdit = data && data._id
-      
+
       // Para criação, sempre incluir obraId
       // Para edição, manter o obraId existente ou usar o novo
-      let payload = { ...formData }
-      
+      const payload = { ...formData }
+
       if (!isEdit) {
         // Nova criação - sempre associar à obra atual
         payload.obraId = obraId
@@ -285,8 +293,8 @@ const ObraDashboard = () => {
         payload.obraId = formData.obraId || data.obraId || obraId
       }
 
-      console.log('Payload para envio:', payload)
-      console.log('Tipo:', type, 'É edição:', isEdit)
+      console.log("Payload para envio:", payload)
+      console.log("Tipo:", type, "É edição:", isEdit)
 
       let response
       if (type === "obrasForm") {
@@ -321,19 +329,25 @@ const ObraDashboard = () => {
         } else {
           response = await apiService.outrosGastos.create(payload)
         }
+      } else if (type === "entradasForm") {
+        if (isEdit) {
+          response = await apiService.entradas.update(data._id, payload)
+        } else {
+          response = await apiService.entradas.create(payload)
+        }
       } else {
         throw new Error(`Tipo de formulário desconhecido: ${type}`)
       }
 
-      console.log('Resposta da API:', response)
+      console.log("Resposta da API:", response)
 
       if (response.error) {
-        throw new Error(response.message || 'Erro na resposta da API')
+        throw new Error(response.message || "Erro na resposta da API")
       }
 
       showAlert(`${isEdit ? "Atualizado" : "Adicionado"} com sucesso!`, "success")
       handleCloseModal()
-      
+
       // Recarregar dados
       await fetchData()
     } catch (error) {
@@ -355,6 +369,8 @@ const ObraDashboard = () => {
           await apiService.contratos.delete(id)
         } else if (type === "outrosGastos") {
           await apiService.outrosGastos.delete(id)
+        } else if (type === "entradas") {
+          await apiService.entradas.delete(id)
         }
         showAlert("Item excluído com sucesso!", "success")
         fetchData()
@@ -376,7 +392,7 @@ const ObraDashboard = () => {
   const renderTable = (type, data, columns) => (
     <>
       <div className="d-flex justify-content-end mb-3">
-        <Button variant="primary" onClick={() => handleOpenModal(`${type}Form`)}>
+        <Button variant="primary" onClick={() => handleOpenModal(`${type}Form`)} className="me-2">
           <Plus size={16} className="me-2" /> Adicionar
         </Button>
       </div>
@@ -484,6 +500,7 @@ const ObraDashboard = () => {
     equipamentosForm: { title: "Equipamento", FormComponent: EquipamentoForm },
     contratosForm: { title: "Contrato", FormComponent: ContratoForm },
     outrosGastosForm: { title: "Outro Gasto", FormComponent: OutroGastoForm },
+    entradasForm: { title: "Entrada", FormComponent: EntradaForm },
   }
 
   const { FormComponent, title } = modalMap[modalConfig.type] || {}
@@ -506,9 +523,7 @@ const ObraDashboard = () => {
           <hr />
           <p className="mb-0">Verifique se o ID está correto ou se a obra ainda existe no banco de dados.</p>
         </Alert>
-        <Button variant="secondary" onClick={() => navigate("/obras_ativas")}>
-          Voltar para Obras
-        </Button>
+        
       </Container>
     )
   }
@@ -525,16 +540,18 @@ const ObraDashboard = () => {
 
       <Row className="mb-4 align-items-center">
         <Col>
-          <Button variant="outline-secondary" onClick={() => navigate("/obras_ativas")} className="mb-3">
-            <ArrowLeft size={16} className="me-2" />
-            Voltar para Obras
-          </Button>
+          
           <div className="d-flex align-items-center gap-3">
             <h1 className="mb-0">{obra.nome}</h1>
           </div>
           <p className="text-muted">{obra.endereco}</p>
         </Col>
         <Col xs="auto">
+          <Button variant="outline-secondary" onClick={() => navigate("/obras_ativas")}>
+              <ArrowLeft size={16} className="me-2" />
+              Voltar para Obras
+            </Button>
+        
           {(obra.spreadsheetId || obra.spreadsheetUrl) && (
             <Button variant="outline-success" onClick={handleOpenSpreadsheet}>
               <ExternalLink size={16} className="me-2" />
@@ -548,21 +565,31 @@ const ObraDashboard = () => {
         <Card.Header as="h5">Resumo Financeiro</Card.Header>
         <Card.Body>
           <Row>
-            <Col md={3}>
+            <Col md={2}>
               <strong>Valor do Contrato:</strong>
-              <p className="h4 text-success">{formatCurrency(obra.valorContrato)}</p>
+              <p className="h4 text-primary">{formatCurrency(obra.valorContrato)}</p>
             </Col>
-            <Col md={3}>
+            <Col md={2}>
+              <strong>Total Entradas:</strong>
+              <p className="h4 text-success">{formatCurrency(relatorio?.totalEntradas)}</p>
+            </Col>
+            <Col md={2}>
               <strong>Total Gasto:</strong>
               <p className="h4 text-danger">{formatCurrency(relatorio?.totalGeral)}</p>
             </Col>
-            <Col md={3}>
+            <Col md={2}>
               <strong>Saldo:</strong>
               <p className={`h4 ${relatorio?.saldo >= 0 ? "text-success" : "text-danger"}`}>
                 {formatCurrency(relatorio?.saldo)}
               </p>
             </Col>
-            <Col md={3}>
+            <Col md={2}>
+              <strong>Saldo c/ Entradas:</strong>
+              <p className={`h4 ${relatorio?.saldoComEntradas >= 0 ? "text-success" : "text-danger"}`}>
+                {formatCurrency(relatorio?.saldoComEntradas)}
+              </p>
+            </Col>
+            <Col md={2}>
               <strong>% Executado:</strong>
               <p
                 className={`h4 ${percentualGasto > 90 ? "text-danger" : percentualGasto > 70 ? "text-warning" : "text-info"}`}
@@ -585,6 +612,9 @@ const ObraDashboard = () => {
               <Col>
                 <h6>Distribuição dos Gastos:</h6>
                 <Row>
+                  <Col>
+                    <small>Entradas: {formatCurrency(relatorio.gastosPorTipo.entradas)}</small>
+                  </Col>
                   <Col>
                     <small>Materiais: {formatCurrency(relatorio.gastosPorTipo.materiais)}</small>
                   </Col>
@@ -630,10 +660,12 @@ const ObraDashboard = () => {
                 </Col>
                 <Col md={6}>
                   <p>
-                    <strong>Data de Início:</strong> {new Date(obra.dataInicio).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
+                    <strong>Data de Início:</strong>{" "}
+                    {new Date(obra.dataInicio).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
                   </p>
                   <p>
-                    <strong>Previsão de Término:</strong> {new Date(obra.dataPrevisaoTermino).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
+                    <strong>Previsão de Término:</strong>{" "}
+                    {new Date(obra.dataPrevisaoTermino).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
                   </p>
                   <p>
                     <strong>Valor do Contrato:</strong> {formatCurrency(obra.valorContrato)}
@@ -669,8 +701,18 @@ const ObraDashboard = () => {
             </Card.Body>
           </Card>
         </Tab>
+        <Tab eventKey="entradas" title={`💰 Entradas (${gastos.entradas.length})`}>
+          <EntradasList
+            obraId={obraId}
+            gastos={gastos}
+            showAddButton={true}
+            onEntradaAdded={() => handleOpenModal("entradasForm")}
+            onEditEntrada={(entrada) => handleOpenModal("entradasForm", entrada)}
+            onDeleteEntrada={(entradaId) => handleDelete("entradas", entradaId)}
+          />
+        </Tab>
         <Tab eventKey="materiais" title={`📦 Materiais (${gastos.materiais.length})`}>
-          <MaterialsList 
+          <MaterialsList
             obraId={obraId}
             gastos={gastos}
             showAddButton={true}
@@ -680,7 +722,7 @@ const ObraDashboard = () => {
           />
         </Tab>
         <Tab eventKey="maoObra" title={`👷 Mão de Obra (${gastos.maoObra.length})`}>
-          <MaoObraList 
+          <MaoObraList
             obraId={obraId}
             gastos={gastos}
             showAddButton={true}
@@ -690,7 +732,7 @@ const ObraDashboard = () => {
           />
         </Tab>
         <Tab eventKey="equipamentos" title={`🔧 Equipamentos (${gastos.equipamentos.length})`}>
-          <EquipamentosList 
+          <EquipamentosList
             obraId={obraId}
             gastos={gastos}
             showAddButton={true}
@@ -700,7 +742,7 @@ const ObraDashboard = () => {
           />
         </Tab>
         <Tab eventKey="contratos" title={`📄 Contratos (${gastos.contratos.length})`}>
-          <ContratosList 
+          <ContratosList
             obraId={obraId}
             showAddButton={true}
             onContractAdded={() => handleOpenModal("contratosForm")}
@@ -713,7 +755,11 @@ const ObraDashboard = () => {
                 { key: "descricao", label: "Descrição" },
                 { key: "categoriaLivre", label: "Categoria" },
                 { key: "valor", label: "Valor", render: (item) => formatCurrency(item.valor) },
-                { key: "data", label: "Data", render: (item) => new Date(item.data).toLocaleDateString("pt-BR", { timeZone: "UTC" }) },
+                {
+                  key: "data",
+                  label: "Data",
+                  render: (item) => new Date(item.data).toLocaleDateString("pt-BR", { timeZone: "UTC" }),
+                },
               ])}
             </Card.Body>
           </Card>
