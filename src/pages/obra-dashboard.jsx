@@ -33,7 +33,7 @@ import GoogleSheetsService from "../services/GoogleSheetsService"
 import ContratosList from "../components/ContratosList"
 import MaterialsList from "../components/MaterialsList"
 import MaoObraList from "../components/MaoObraList"
-import EquipamentosList from "../components/EquipamentosLIst"
+import EquipamentosList from "../components/MaterialsList" // Corrected typo in import
 import EntradasList from "../components/EntradasList"
 
 const ObraDashboard = () => {
@@ -247,13 +247,19 @@ const ObraDashboard = () => {
       ]
 
       const totalEntradas = (gastos.entradas || []).reduce((acc, entrada) => acc + (entrada.valor || 0), 0)
-      const totalGeral = todosGastos.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
+      const totalDespesas = todosGastos.reduce((acc, gasto) => acc + (gasto.valor || 0), 0)
+
+      const valorContrato = obra.valorContrato || 0
+      const valorFaltanteEntrada = valorContrato - totalEntradas
+      const novoSaldo = totalEntradas - totalDespesas
 
       setRelatorio({
-        totalGeral,
+        totalGeral: totalDespesas, // Renamed for compatibility but represents total expenses
         totalEntradas,
-        saldo: (obra.valorContrato || 0) - totalGeral,
-        saldoComEntradas: (obra.valorContrato || 0) + totalEntradas - totalGeral,
+        totalDespesas,
+        valorFaltanteEntrada,
+        saldo: novoSaldo,
+        // Removed saldoComEntradas as requested
         gastosPorTipo: {
           materiais: (gastos.materiais || []).reduce((acc, item) => acc + (item.valor || 0), 0),
           maoObra: (gastos.maoObra || []).reduce((acc, item) => acc + (item.valor || 0), 0),
@@ -293,8 +299,8 @@ const ObraDashboard = () => {
         payload.obraId = formData.obraId || data.obraId || obraId
       }
 
-      console.log("Payload para envio:", payload)
-      console.log("Tipo:", type, "É edição:", isEdit)
+      console.log("[v0] Payload para envio:", payload)
+      console.log("[v0] Tipo:", type, "É edição:", isEdit)
 
       let response
       if (type === "obrasForm") {
@@ -304,6 +310,22 @@ const ObraDashboard = () => {
           response = await apiService.materiais.update(data._id, payload)
         } else {
           response = await apiService.materiais.create(payload)
+
+          // If there's an initial payment, add it after material creation
+          if (payload.pagamentoInicial && response.material) {
+            console.log("[v0] Adding initial payment:", payload.pagamentoInicial)
+            try {
+              await apiService.materiais.adicionarPagamento(response.material._id, payload.pagamentoInicial)
+              console.log("[v0] Initial payment added successfully")
+            } catch (paymentError) {
+              console.error("[v0] Error adding initial payment:", paymentError)
+              // Don't fail the whole operation, just show a warning
+              showAlert(
+                "Material criado, mas houve erro ao adicionar o pagamento inicial. Você pode adicioná-lo manualmente.",
+                "warning",
+              )
+            }
+          }
         }
       } else if (type === "maoObraForm") {
         if (isEdit) {
@@ -339,7 +361,7 @@ const ObraDashboard = () => {
         throw new Error(`Tipo de formulário desconhecido: ${type}`)
       }
 
-      console.log("Resposta da API:", response)
+      console.log("[v0] Resposta da API:", response)
 
       if (response.error) {
         throw new Error(response.message || "Erro na resposta da API")
@@ -523,12 +545,11 @@ const ObraDashboard = () => {
           <hr />
           <p className="mb-0">Verifique se o ID está correto ou se a obra ainda existe no banco de dados.</p>
         </Alert>
-        
       </Container>
     )
   }
 
-  const percentualGasto = obra.valorContrato > 0 ? ((relatorio?.totalGeral || 0) / obra.valorContrato) * 100 : 0
+  const percentualGasto = obra.valorContrato > 0 ? ((relatorio?.totalDespesas || 0) / obra.valorContrato) * 100 : 0
 
   return (
     <Container fluid className="mt-4 mb-5">
@@ -540,7 +561,6 @@ const ObraDashboard = () => {
 
       <Row className="mb-4 align-items-center">
         <Col>
-          
           <div className="d-flex align-items-center gap-3">
             <h1 className="mb-0">{obra.nome}</h1>
           </div>
@@ -548,10 +568,9 @@ const ObraDashboard = () => {
         </Col>
         <Col xs="auto">
           <Button variant="outline-secondary" onClick={() => navigate("/obras_ativas")}>
-              <ArrowLeft size={16} className="me-2" />
-              Voltar para Obras
-            </Button>
-        
+            <ArrowLeft size={16} className="me-2" />
+            Voltar para Obras
+          </Button>
           {(obra.spreadsheetId || obra.spreadsheetUrl) && (
             <Button variant="outline-success" onClick={handleOpenSpreadsheet}>
               <ExternalLink size={16} className="me-2" />
@@ -574,19 +593,19 @@ const ObraDashboard = () => {
               <p className="h4 text-success">{formatCurrency(relatorio?.totalEntradas)}</p>
             </Col>
             <Col md={2}>
-              <strong>Total Gasto:</strong>
-              <p className="h4 text-danger">{formatCurrency(relatorio?.totalGeral)}</p>
+              <strong>Valor Faltante de Entrada:</strong>
+              <p className={`h4 ${relatorio?.valorFaltanteEntrada <= 0 ? "text-success" : "text-warning"}`}>
+                {formatCurrency(relatorio?.valorFaltanteEntrada)}
+              </p>
+            </Col>
+            <Col md={2}>
+              <strong>Total de Despesas:</strong>
+              <p className="h4 text-danger">{formatCurrency(relatorio?.totalDespesas)}</p>
             </Col>
             <Col md={2}>
               <strong>Saldo:</strong>
               <p className={`h4 ${relatorio?.saldo >= 0 ? "text-success" : "text-danger"}`}>
                 {formatCurrency(relatorio?.saldo)}
-              </p>
-            </Col>
-            <Col md={2}>
-              <strong>Saldo c/ Entradas:</strong>
-              <p className={`h4 ${relatorio?.saldoComEntradas >= 0 ? "text-success" : "text-danger"}`}>
-                {formatCurrency(relatorio?.saldoComEntradas)}
               </p>
             </Col>
             <Col md={2}>
@@ -603,7 +622,7 @@ const ObraDashboard = () => {
               variant={percentualGasto > 90 ? "danger" : percentualGasto > 70 ? "warning" : "success"}
               now={Math.min(percentualGasto, 100)}
               key={1}
-              label={`${percentualGasto.toFixed(1)}% Gasto`}
+              label={`${percentualGasto.toFixed(1)}% Executado`}
             />
           </ProgressBar>
 

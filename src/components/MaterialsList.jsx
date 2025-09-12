@@ -2,34 +2,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { 
-  Card, 
-  Table, 
-  Button, 
-  Badge, 
-  ProgressBar,
-  Spinner,
-  Alert,
-  InputGroup,
-  Form,
-  Row,
-  Col
-} from "react-bootstrap"
-import { 
-  Package, 
-  DollarSign, 
-  Search,
-  Plus,
-  Edit,
-  Trash2,
-  Filter,
-  Calendar,
-  MapPin,
-  User
-} from "lucide-react"
-import apiService from "../../src/services/apiService"
+import { Card, Table, Button, Badge, ProgressBar, Spinner, Alert, InputGroup, Form, Row, Col } from "react-bootstrap"
+import { Package, Search, Plus, Edit, Trash2, Calendar, MapPin, User, CreditCard } from "lucide-react"
+import MaterialPagamentos from "./forms/MaterialPagamentos"
+import apiService from "../services/apiService"
 
-function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, gastos, onEditMaterial, onDeleteMaterial }) {
+function MaterialsList({
+  obraId = null,
+  showAddButton = true,
+  onMaterialAdded,
+  gastos,
+  onEditMaterial,
+  onDeleteMaterial,
+}) {
   const [materiais, setMateriais] = useState([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -38,27 +23,70 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
   const [filterSolicitante, setFilterSolicitante] = useState("")
   const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
-  // Listas únicas para filtros
+  const [showPagamentosModal, setShowPagamentosModal] = useState(false)
+  const [selectedMaterialId, setSelectedMaterialId] = useState(null)
   const [locais, setLocais] = useState([])
   const [solicitantes, setSolicitantes] = useState([])
+  const [materiaisPagamentos, setMateriaisPagamentos] = useState({})
 
   useEffect(() => {
     if (gastos && gastos.materiais) {
       setMateriais(gastos.materiais)
-      
+
       // Extrair locais únicos
-      const locaisUnicos = [...new Set(gastos.materiais.map(m => m.localCompra).filter(Boolean))]
+      const locaisUnicos = [...new Set(gastos.materiais.map((m) => m.localCompra).filter(Boolean))]
       setLocais(locaisUnicos)
-      
+
       // Extrair solicitantes únicos
-      const solicitantesUnicos = [...new Set(gastos.materiais.map(m => m.solicitante).filter(Boolean))]
+      const solicitantesUnicos = [...new Set(gastos.materiais.map((m) => m.solicitante).filter(Boolean))]
       setSolicitantes(solicitantesUnicos)
+
+      // Check if materials already have pagamentos property
+      const materialsWithPayments = gastos.materiais.some(
+        (material) => material.pagamentos && Array.isArray(material.pagamentos),
+      )
+
+      if (materialsWithPayments) {
+        const pagamentosData = {}
+        gastos.materiais.forEach((material) => {
+          pagamentosData[material._id] = material.pagamentos || []
+        })
+        setMateriaisPagamentos(pagamentosData)
+      } else {
+        fetchAllPayments(gastos.materiais)
+      }
     }
   }, [gastos])
 
-  const showAlert = (message, variant) => {
-    setAlert({ show: true, message, variant })
-    setTimeout(() => setAlert({ show: false, message: "", variant: "" }), 5000)
+  const fetchAllPayments = async (materiaisList) => {
+    const pagamentosData = {}
+
+    for (const material of materiaisList) {
+      try {
+        const pagamentos = await apiService.materiais.listarPagamentos(material._id)
+        pagamentosData[material._id] = pagamentos
+      } catch (error) {
+        // If material doesn't have payments endpoint or error, set empty array
+        pagamentosData[material._id] = []
+      }
+    }
+
+    setMateriaisPagamentos(pagamentosData)
+  }
+
+  const calcularValoresMaterial = (material) => {
+    const valorCombinado = material.valor || 0
+
+    // If material already has valorTotalPagamentos from API, use it
+    const valorPago = material.valorTotalPagamentos || 0
+
+    const valorRestante = valorCombinado - valorPago
+
+    return {
+      valorCombinado,
+      valorPago,
+      valorRestante: valorRestante > 0 ? valorRestante : 0,
+    }
   }
 
   const getStatusBadge = (status) => {
@@ -67,12 +95,12 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
       efetuado: { variant: "success", label: "Efetuado" },
       em_processamento: { variant: "info", label: "Em Processamento" },
       cancelado: { variant: "danger", label: "Cancelado" },
-      atrasado: { variant: "danger", label: "Atrasado" }
+      atrasado: { variant: "danger", label: "Atrasado" },
     }
     return statusConfig[status] || statusConfig.pendente
   }
 
-  const formatCurrency = (value) => 
+  const formatCurrency = (value) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0)
 
   const formatDate = (date) => {
@@ -80,19 +108,48 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
     return new Date(date).toLocaleDateString("pt-BR", { timeZone: "UTC" })
   }
 
+  const handleOpenPagamentos = (materialId) => {
+    setSelectedMaterialId(materialId)
+    setShowPagamentosModal(true)
+  }
+
+  const handleClosePagamentos = () => {
+    setShowPagamentosModal(false)
+    setSelectedMaterialId(null)
+  }
+
+  const handleUpdatePagamentos = async () => {
+    if (selectedMaterialId && gastos && gastos.materiais) {
+      try {
+        const pagamentos = await apiService.materiais.listarPagamentos(selectedMaterialId)
+        setMateriaisPagamentos((prev) => ({
+          ...prev,
+          [selectedMaterialId]: pagamentos,
+        }))
+      } catch (error) {
+        console.error("Erro ao atualizar pagamentos:", error)
+        setMateriaisPagamentos((prev) => ({
+          ...prev,
+          [selectedMaterialId]: [],
+        }))
+      }
+    }
+  }
+
   // Filtrar materiais
-  const materiaisFiltrados = materiais.filter(material => {
-    const matchesSearch = searchTerm === "" || 
+  const materiaisFiltrados = materiais.filter((material) => {
+    const matchesSearch =
+      searchTerm === "" ||
       (material.numeroNota && material.numeroNota.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (material.descricao && material.descricao.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (material.localCompra && material.localCompra.toLowerCase().includes(searchTerm.toLowerCase()))
-    
+
     const matchesStatus = filterStatus === "" || material.statusPagamento === filterStatus
-    
+
     const matchesLocal = filterLocal === "" || material.localCompra === filterLocal
-    
+
     const matchesSolicitante = filterSolicitante === "" || material.solicitante === filterSolicitante
-    
+
     return matchesSearch && matchesStatus && matchesLocal && matchesSolicitante
   })
 
@@ -112,28 +169,28 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
       .filter((m) => m.statusPagamento === "atrasado")
       .reduce((acc, m) => acc + (m.valor || 0), 0)
 
-    return { 
-      total, 
-      pago, 
-      pendente, 
-      emProcessamento, 
+    return {
+      total,
+      pago,
+      pendente,
+      emProcessamento,
       atrasado,
-      quantidadePago: materiaisFiltrados.filter(m => m.statusPagamento === "efetuado").length,
-      quantidadePendente: materiaisFiltrados.filter(m => m.statusPagamento === "pendente").length,
-      quantidadeEmProcessamento: materiaisFiltrados.filter(m => m.statusPagamento === "em_processamento").length,
-      quantidadeAtrasado: materiaisFiltrados.filter(m => m.statusPagamento === "atrasado").length
+      quantidadePago: materiaisFiltrados.filter((m) => m.statusPagamento === "efetuado").length,
+      quantidadePendente: materiaisFiltrados.filter((m) => m.statusPagamento === "pendente").length,
+      quantidadeEmProcessamento: materiaisFiltrados.filter((m) => m.statusPagamento === "em_processamento").length,
+      quantidadeAtrasado: materiaisFiltrados.filter((m) => m.statusPagamento === "atrasado").length,
     }
   }
 
   // Calcular estatísticas por local
   const calcularEstatisticasPorLocal = () => {
     const estatisticas = {}
-    materiaisFiltrados.forEach(material => {
+    materiaisFiltrados.forEach((material) => {
       const local = material.localCompra || "Não informado"
       if (!estatisticas[local]) {
         estatisticas[local] = {
           quantidade: 0,
-          valor: 0
+          valor: 0,
         }
       }
       estatisticas[local].quantidade++
@@ -163,7 +220,9 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
             <div className="d-flex align-items-center">
               <Package className="text-primary me-2" size={20} />
               <h5 className="mb-0">Materiais</h5>
-              <Badge bg="primary" className="ms-2">{materiaisFiltrados.length}</Badge>
+              <Badge bg="primary" className="ms-2">
+                {materiaisFiltrados.length}
+              </Badge>
             </div>
             {showAddButton && onMaterialAdded && (
               <Button variant="primary" size="sm" onClick={onMaterialAdded}>
@@ -208,18 +267,14 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
               <div className="border rounded p-3">
                 <h6 className="text-muted mb-1">Pendente</h6>
                 <h4 className="text-warning">{formatCurrency(totais.pendente)}</h4>
-                <small className="text-muted">
-                  {totais.quantidadePendente} materiais pendentes
-                </small>
+                <small className="text-muted">{totais.quantidadePendente} materiais pendentes</small>
               </div>
             </div>
             <div className="col-md-3">
               <div className="border rounded p-3">
                 <h6 className="text-muted mb-1">Em Processamento</h6>
                 <h4 className="text-info">{formatCurrency(totais.emProcessamento)}</h4>
-                <small className="text-muted">
-                  {totais.quantidadeEmProcessamento} em processamento
-                </small>
+                <small className="text-muted">{totais.quantidadeEmProcessamento} em processamento</small>
               </div>
             </div>
           </div>
@@ -239,10 +294,7 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
               </InputGroup>
             </Col>
             <Col md={3}>
-              <Form.Select 
-                value={filterStatus} 
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
+              <Form.Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                 <option value="">Todos os status</option>
                 <option value="pendente">Pendente</option>
                 <option value="efetuado">Efetuado</option>
@@ -256,12 +308,9 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
                 <InputGroup.Text>
                   <MapPin size={16} />
                 </InputGroup.Text>
-                <Form.Select 
-                  value={filterLocal} 
-                  onChange={(e) => setFilterLocal(e.target.value)}
-                >
+                <Form.Select value={filterLocal} onChange={(e) => setFilterLocal(e.target.value)}>
                   <option value="">Todos os locais</option>
-                  {locais.map(local => (
+                  {locais.map((local) => (
                     <option key={local} value={local}>
                       {local}
                     </option>
@@ -274,12 +323,9 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
                 <InputGroup.Text>
                   <User size={16} />
                 </InputGroup.Text>
-                <Form.Select 
-                  value={filterSolicitante} 
-                  onChange={(e) => setFilterSolicitante(e.target.value)}
-                >
+                <Form.Select value={filterSolicitante} onChange={(e) => setFilterSolicitante(e.target.value)}>
                   <option value="">Todos os solicitantes</option>
-                  {solicitantes.map(solicitante => (
+                  {solicitantes.map((solicitante) => (
                     <option key={solicitante} value={solicitante}>
                       {solicitante}
                     </option>
@@ -295,19 +341,23 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
               <Col>
                 <h6>Distribuição por Local de Compra:</h6>
                 <Row>
-                  {Object.entries(estatisticasPorLocal).slice(0, 4).map(([local, stats]) => (
-                    <Col md={3} key={local} className="mb-2">
-                      <Card className="h-100 border-0 shadow-sm">
-                        <Card.Body className="py-2 px-3">
-                          <h6 className="mb-1" style={{ fontSize: "0.85rem" }}>{local}</h6>
-                          <div className="d-flex justify-content-between">
-                            <small className="text-muted">{stats.quantidade} itens</small>
-                            <small className="fw-bold text-success">{formatCurrency(stats.valor)}</small>
-                          </div>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  ))}
+                  {Object.entries(estatisticasPorLocal)
+                    .slice(0, 4)
+                    .map(([local, stats]) => (
+                      <Col md={3} key={local} className="mb-2">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="py-2 px-3">
+                            <h6 className="mb-1" style={{ fontSize: "0.85rem" }}>
+                              {local}
+                            </h6>
+                            <div className="d-flex justify-content-between">
+                              <small className="text-muted">{stats.quantidade} itens</small>
+                              <small className="fw-bold text-success">{formatCurrency(stats.valor)}</small>
+                            </div>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                    ))}
                 </Row>
               </Col>
             </Row>
@@ -327,7 +377,9 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
                   <th>Descrição</th>
                   <th>Local de Compra</th>
                   <th>Solicitante</th>
-                  <th>Valor</th>
+                  <th>Valor Combinado</th>
+                  <th>Valor Pago</th>
+                  <th>Valor Restante</th>
                   <th>Data</th>
                   <th>Status</th>
                   <th>Ações</th>
@@ -336,7 +388,8 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
               <tbody>
                 {materiaisFiltrados.map((material) => {
                   const statusBadge = getStatusBadge(material.statusPagamento)
-                  
+                  const { valorCombinado, valorPago, valorRestante } = calcularValoresMaterial(material)
+
                   return (
                     <tr key={material._id}>
                       <td>
@@ -344,9 +397,7 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
                       </td>
                       <td>
                         {material.descricao || "-"}
-                        {material.observacoes && (
-                          <small className="d-block text-muted">{material.observacoes}</small>
-                        )}
+                        {material.observacoes && <small className="d-block text-muted">{material.observacoes}</small>}
                       </td>
                       <td>
                         <div className="d-flex align-items-center">
@@ -361,7 +412,20 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
                         </div>
                       </td>
                       <td>
-                        <strong>{formatCurrency(material.valor)}</strong>
+                        <strong>{formatCurrency(valorCombinado)}</strong>
+                      </td>
+                      <td>
+                        <strong className="text-success">{formatCurrency(valorPago)}</strong>
+                        {valorPago > 0 && (
+                          <small className="d-block text-muted">
+                            {((valorPago / valorCombinado) * 100).toFixed(1)}%
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        <strong className={valorRestante > 0 ? "text-warning" : "text-success"}>
+                          {formatCurrency(valorRestante)}
+                        </strong>
                       </td>
                       <td>
                         <div className="d-flex align-items-center">
@@ -370,9 +434,7 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
                         </div>
                       </td>
                       <td>
-                        <Badge bg={statusBadge.variant}>
-                          {statusBadge.label}
-                        </Badge>
+                        <Badge bg={statusBadge.variant}>{statusBadge.label}</Badge>
                       </td>
                       <td>
                         <Button
@@ -383,6 +445,15 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
                           title="Editar Material"
                         >
                           <Edit size={14} />
+                        </Button>
+                        <Button
+                          variant="outline-success"
+                          size="sm"
+                          className="me-2"
+                          onClick={() => handleOpenPagamentos(material._id)}
+                          title="Gerenciar Pagamentos"
+                        >
+                          <CreditCard size={14} />
                         </Button>
                         <Button
                           variant="outline-danger"
@@ -401,6 +472,15 @@ function MaterialsList({ obraId = null, showAddButton = true, onMaterialAdded, g
           )}
         </Card.Body>
       </Card>
+
+      {selectedMaterialId && (
+        <MaterialPagamentos
+          materialId={selectedMaterialId}
+          show={showPagamentosModal}
+          onHide={handleClosePagamentos}
+          onUpdate={handleUpdatePagamentos}
+        />
+      )}
     </>
   )
 }

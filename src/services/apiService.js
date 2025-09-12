@@ -32,7 +32,9 @@ class ApiService {
       return response.data
     },
     getById: async (id) => {
+      console.log("[v0] apiService - Buscando material por ID:", id)
       const response = await ApiBase.get(`/materiais/${id}`)
+      console.log("[v0] apiService - Resposta do getById:", response.data)
       return response.data
     },
     create: async (data) => {
@@ -45,6 +47,34 @@ class ApiService {
     },
     delete: async (id) => {
       const response = await ApiBase.delete(`/materiais/${id}`)
+      return response.data
+    },
+    // Métodos para pagamentos aninhados
+    listarPagamentos: async (materialId) => {
+      const response = await ApiBase.get(`/materiais/${materialId}/pagamentos`)
+      return response.data
+    },
+    adicionarPagamento: async (materialId, data) => {
+      console.log("[v0] apiService - Adicionando pagamento para material ID:", materialId, "Data:", data)
+      const response = await ApiBase.post(`/materiais/${materialId}/pagamentos`, data)
+      console.log("[v0] apiService - Resposta do adicionarPagamento:", response.data)
+      return response.data
+    },
+    buscarPagamento: async (materialId, pagamentoId) => {
+      const response = await ApiBase.get(`/materiais/${materialId}/pagamentos/${pagamentoId}`)
+      return response.data
+    },
+    atualizarPagamento: async (materialId, pagamentoId, data) => {
+      const response = await ApiBase.put(`/materiais/${materialId}/pagamentos/${pagamentoId}`, data)
+      return response.data
+    },
+    removerPagamento: async (materialId, pagamentoId) => {
+      const response = await ApiBase.delete(`/materiais/${materialId}/pagamentos/${pagamentoId}`)
+      return response.data
+    },
+    // Relatório de pagamentos
+    relatorioPagamentos: async (params = {}) => {
+      const response = await ApiBase.get("/materiais/relatorio/pagamentos", { params })
       return response.data
     },
   }
@@ -218,12 +248,12 @@ class ApiService {
 
       // Processar materiais
       if (materiaisRes.materiais) {
-        materiaisRes.materiais.forEach(material => {
+        materiaisRes.materiais.forEach((material) => {
           const dataVencimento = this.extrairDataVencimento(material)
           if (dataVencimento && dataVencimento >= hoje) {
             gastosFuturos.push({
               ...material,
-              tipo: 'Material',
+              tipo: "Material",
               dataVencimento: dataVencimento.toISOString(),
               dataPagamento: material.data,
             })
@@ -233,12 +263,12 @@ class ApiService {
 
       // Processar mão de obra
       if (maoObraRes.maoObras) {
-        maoObraRes.maoObras.forEach(maoObra => {
+        maoObraRes.maoObras.forEach((maoObra) => {
           const dataVencimento = this.extrairDataVencimento(maoObra)
           if (dataVencimento && dataVencimento >= hoje) {
             gastosFuturos.push({
               ...maoObra,
-              tipo: 'Mão de Obra',
+              tipo: "Mão de Obra",
               dataVencimento: dataVencimento.toISOString(),
               dataPagamento: maoObra.fimContrato || maoObra.inicioContrato,
             })
@@ -248,12 +278,12 @@ class ApiService {
 
       // Processar equipamentos
       if (equipamentosRes.equipamentos) {
-        equipamentosRes.equipamentos.forEach(equipamento => {
+        equipamentosRes.equipamentos.forEach((equipamento) => {
           const dataVencimento = this.extrairDataVencimento(equipamento)
           if (dataVencimento && dataVencimento >= hoje) {
             gastosFuturos.push({
               ...equipamento,
-              tipo: 'Equipamento',
+              tipo: "Equipamento",
               dataVencimento: dataVencimento.toISOString(),
               dataPagamento: equipamento.data,
             })
@@ -263,26 +293,27 @@ class ApiService {
 
       // Processar contratos
       if (contratosRes.contratos) {
-        contratosRes.contratos.forEach(contrato => {
+        contratosRes.contratos.forEach((contrato) => {
           // Usar valorInicial ao invés de valor
           const valorContrato = contrato.valorInicial || contrato.valor || 0
           const dataVencimento = this.extrairDataVencimento(contrato)
-          
+
           // Verificar se tem pagamentos pendentes
-          const temPagamentosPendentes = contrato.statusGeralPagamentos && 
-            contrato.statusGeralPagamentos !== 'todos_pagos' &&
-            contrato.statusGeralPagamentos !== 'sem_pagamentos'
-          
+          const temPagamentosPendentes =
+            contrato.statusGeralPagamentos &&
+            contrato.statusGeralPagamentos !== "todos_pagos" &&
+            contrato.statusGeralPagamentos !== "sem_pagamentos"
+
           if ((dataVencimento && dataVencimento >= hoje) || temPagamentosPendentes) {
             gastosFuturos.push({
               ...contrato,
-              tipo: 'Contrato',
+              tipo: "Contrato",
               valor: valorContrato,
               dataVencimento: dataVencimento ? dataVencimento.toISOString() : new Date().toISOString(),
               dataPagamento: contrato.inicioContrato,
               // Adicionar informações dos pagamentos
               valorTotalPagamentos: contrato.valorTotalPagamentos || 0,
-              saldoPendente: valorContrato - (contrato.valorTotalPagamentos || 0)
+              saldoPendente: valorContrato - (contrato.valorTotalPagamentos || 0),
             })
           }
         })
@@ -290,12 +321,12 @@ class ApiService {
 
       // Processar outros gastos
       if (outrosGastosRes.gastos) {
-        outrosGastosRes.gastos.forEach(gasto => {
+        outrosGastosRes.gastos.forEach((gasto) => {
           const dataVencimento = this.extrairDataVencimento(gasto)
           if (dataVencimento && dataVencimento >= hoje) {
             gastosFuturos.push({
               ...gasto,
-              tipo: 'Outros',
+              tipo: "Outros",
               dataVencimento: dataVencimento.toISOString(),
               dataPagamento: gasto.data,
             })
@@ -309,15 +340,14 @@ class ApiService {
       return {
         error: false,
         gastos: gastosFuturos,
-        total: gastosFuturos.length
+        total: gastosFuturos.length,
       }
-
     } catch (error) {
-      console.error('Erro ao buscar gastos futuros:', error)
+      console.error("Erro ao buscar gastos futuros:", error)
       return {
         error: true,
         message: error.message,
-        gastos: []
+        gastos: [],
       }
     }
   }
@@ -328,13 +358,13 @@ class ApiService {
   extrairDataVencimento = (gasto) => {
     // Lista de possíveis campos de data (em ordem de prioridade)
     const camposData = [
-      'dataVencimento',
-      'dataPagamento', 
-      'fimContrato',
-      'dataTermino',
-      'data',
-      'inicioContrato',
-      'dataInicio'
+      "dataVencimento",
+      "dataPagamento",
+      "fimContrato",
+      "dataTermino",
+      "data",
+      "inicioContrato",
+      "dataInicio",
     ]
 
     for (const campo of camposData) {
@@ -357,19 +387,19 @@ class ApiService {
       // Este método deveria buscar pagamentos semanais
       // Como não vejo um endpoint específico, vou retornar os dados dos gastos
       // Você pode ajustar conforme sua API
-      
+
       const gastosFuturos = await this.buscarGastosFuturos()
-      
+
       return {
         error: false,
-        pagamentos: gastosFuturos.gastos || []
+        pagamentos: gastosFuturos.gastos || [],
       }
     } catch (error) {
-      console.error('Erro ao buscar pagamentos semanais:', error)
+      console.error("Erro ao buscar pagamentos semanais:", error)
       return {
         error: true,
         message: error.message,
-        pagamentos: []
+        pagamentos: [],
       }
     }
   }
@@ -381,77 +411,21 @@ class ApiService {
     try {
       // Implementar conforme sua API
       // Por enquanto, vou simular uma atualização de status
-      
+
       console.log(`Marcando pagamento ${pagamentoId} da obra ${obraId} como efetuado`)
-      
+
       return {
         error: false,
-        message: 'Pagamento marcado como efetuado'
+        message: "Pagamento marcado como efetuado",
       }
     } catch (error) {
-      console.error('Erro ao marcar pagamento como efetuado:', error)
+      console.error("Erro ao marcar pagamento como efetuado:", error)
       return {
         error: true,
-        message: error.message
+        message: error.message,
       }
     }
   }
-}
-
-const maoObraServiceFixed = {
-  getAll: async (params = {}) => {
-    try {
-      console.log('Buscando mão de obra com parâmetros:', params)
-      const response = await ApiBase.get("/mao-obra", { params })
-      console.log('Resposta da API mão de obra:', response.data)
-      return response.data
-    } catch (error) {
-      console.error('Erro ao buscar mão de obra:', error)
-      throw error
-    }
-  },
-  getById: async (id) => {
-    try {
-      const response = await ApiBase.get(`/mao-obra/${id}`)
-      return response.data
-    } catch (error) {
-      console.error('Erro ao buscar mão de obra por ID:', error)
-      throw error
-    }
-  },
-  create: async (data) => {
-    try {
-      console.log('Criando mão de obra:', data)
-      const response = await ApiBase.post("/mao-obra", data)
-      console.log('Resposta da criação:', response.data)
-      return response.data
-    } catch (error) {
-      console.error('Erro ao criar mão de obra:', error)
-      throw error
-    }
-  },
-  update: async (id, data) => {
-    try {
-      console.log('Atualizando mão de obra:', id, data)
-      const response = await ApiBase.put(`/mao-obra/${id}`, data)
-      console.log('Resposta da atualização:', response.data)
-      return response.data
-    } catch (error) {
-      console.error('Erro ao atualizar mão de obra:', error)
-      throw error
-    }
-  },
-  delete: async (id) => {
-    try {
-      console.log('Deletando mão de obra:', id)
-      const response = await ApiBase.delete(`/mao-obra/${id}`)
-      console.log('Resposta da deleção:', response.data)
-      return response.data
-    } catch (error) {
-      console.error('Erro ao deletar mão de obra:', error)
-      throw error
-    }
-  },
 }
 
 export default new ApiService()
