@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, Button, Modal, Row, Col, Container, Spinner, Alert, Badge, Dropdown } from "react-bootstrap"
 import { Link } from "react-router-dom"
-import { Plus, Building, Eye, Database, ExternalLink, MoreVertical, Trash2, Home } from "lucide-react"
+import { Plus, Building, Eye, Database, ExternalLink, MoreVertical, Trash2, Home, Lock } from "lucide-react"
 import apiService from "../services/apiService"
+import userService from "../services/userService"
 import ObraForm from "../components/forms/ObraForm"
 import GastosResumo from "../components/GastosResumo"
 import GoogleSheetsService from "../services/GoogleSheetsService"
@@ -21,23 +22,56 @@ const ObrasAtivas = () => {
   const [obraToEdit, setObraToEdit] = useState(null)
   const [alert, setAlert] = useState({ show: false, message: "", variant: "" })
 
+  // Estados para controle de acesso
+  const [currentUserRole, setCurrentUserRole] = useState(null)
+  const [currentUserId, setCurrentUserId] = useState(null)
+  const [accessDeniedObras, setAccessDeniedObras] = useState([])
+
   const showAlert = (message, variant = "success", duration = 5000) => {
     setAlert({ show: true, message, variant })
     setTimeout(() => setAlert({ show: false, message: "", variant: "" }), duration)
   }
 
+  // Inicializar dados do usuário atual
+  useEffect(() => {
+    const role = userService.getCurrentUserRole()
+    const userId = userService.getCurrentUserId()
+    setCurrentUserRole(role)
+    setCurrentUserId(userId)
+  }, [])
+
   const fetchObras = useCallback(async () => {
     setLoading(true)
     try {
-      const [obrasResponse, materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] =
-        await Promise.all([
-          apiService.obras.getAll(),
-          apiService.materiais.getAll({ limit: 10000 }),
-          apiService.maoObra.getAll({ limit: 10000 }),
-          apiService.equipamentos.getAll({ limit: 10000 }),
-          apiService.contratos.getAll({ limit: 10000 }),
-          apiService.outrosGastos.getAll({ limit: 10000 }),
-        ])
+      let obrasResponse
+
+      // Verificar se é admin ou usuário comum
+      if (currentUserRole === 'Admin') {
+        // Admin vê todas as obras
+        obrasResponse = await apiService.obras.getAll()
+        console.log('Admin - Carregando todas as obras:', obrasResponse)
+      } else if (currentUserRole === 'User' && currentUserId) {
+        // Usuário comum vê apenas obras permitidas
+        try {
+          obrasResponse = await userService.listarObrasUsuario(currentUserId)
+          console.log('User - Carregando obras permitidas:', obrasResponse)
+        } catch (error) {
+          console.error('Erro ao buscar obras do usuário:', error)
+          // Fallback: se não conseguir buscar obras específicas, mostrar mensagem
+          setObras([])
+          setObrasComGastos([])
+          setAccessDeniedObras([])
+          showAlert('Erro ao carregar suas obras. Contate o administrador.', 'warning')
+          setLoading(false)
+          return
+        }
+      } else {
+        // Caso não tenha role definida ou userId, não mostrar obras
+        setObras([])
+        setObrasComGastos([])
+        setLoading(false)
+        return
+      }
 
       if (obrasResponse.error) {
         showAlert(obrasResponse.message || "Erro ao carregar obras.", "danger")
@@ -47,6 +81,23 @@ const ObrasAtivas = () => {
 
       const obras = obrasResponse.obras || []
       setObras(obras)
+
+      // Se não há obras, não precisamos buscar gastos
+      if (obras.length === 0) {
+        setObrasComGastos([])
+        setLoading(false)
+        return
+      }
+
+      // Buscar gastos para calcular totais
+      const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] =
+        await Promise.all([
+          apiService.materiais.getAll({ limit: 10000 }),
+          apiService.maoObra.getAll({ limit: 10000 }),
+          apiService.equipamentos.getAll({ limit: 10000 }),
+          apiService.contratos.getAll({ limit: 10000 }),
+          apiService.outrosGastos.getAll({ limit: 10000 }),
+        ])
 
       const todosGastos = [
         ...(materiaisRes.materiais || []),
@@ -82,11 +133,13 @@ const ObrasAtivas = () => {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentUserRole, currentUserId])
 
   useEffect(() => {
-    fetchObras()
-  }, [fetchObras])
+    if (currentUserRole && (currentUserRole === 'Admin' || currentUserId)) {
+      fetchObras()
+    }
+  }, [fetchObras, currentUserRole, currentUserId])
 
   const handleCreateObra = async (formData) => {
     setIsSubmitting(true)
@@ -215,31 +268,50 @@ const ObrasAtivas = () => {
     }
   }
 
+  // Verificar se pode criar obras (apenas Admin)
+  const canCreateObra = currentUserRole === 'Admin'
+
+  // Verificar se pode editar/excluir obras (apenas Admin)
+  const canManageObra = currentUserRole === 'Admin'
+
   return (
     <Container className="mt-4 mb-5">
       
       <Row className="mb-4 align-items-center">
-
-        <Col >
-          <Link to="/home">
-                  <Button variant="primary" size="sm">
-                    <Home size={16} className="me-2" />
-                    Início
-                  </Button>
-                </Link> 
-        
-        </Col>
-        
-        <Col >
-          <h1 className="mb-0">Obras</h1>
-          <p className="text-muted">Gerencie e acompanhe todos os seus projetos.</p>
-        </Col>
         <Col>
-          
-          <Button variant="primary" onClick={() => setShowModal(true)}>
-            <Plus size={16} className="me-2" />
-            Nova Obra
-          </Button>
+          <Link to="/home">
+            <Button variant="primary" size="sm">
+              <Home size={16} className="me-2" />
+              Início
+            </Button>
+          </Link> 
+        </Col>
+        
+        <Col>
+          <h1 className="mb-0">
+            Obras
+            {currentUserRole === 'User' && (
+              <Badge bg="info" className="ms-3">
+                <Lock size={14} className="me-1" />
+                Acesso Limitado
+              </Badge>
+            )}
+          </h1>
+          <p className="text-muted">
+            {currentUserRole === 'Admin' 
+              ? "Gerencie e acompanhe todos os seus projetos." 
+              : "Acompanhe os projetos que você tem acesso."
+            }
+          </p>
+        </Col>
+        
+        <Col>
+          {canCreateObra && (
+            <Button variant="primary" onClick={() => setShowModal(true)}>
+              <Plus size={16} className="me-2" />
+              Nova Obra
+            </Button>
+          )}
         </Col>
       </Row>
 
@@ -266,21 +338,23 @@ const ObrasAtivas = () => {
                       <Badge bg="success" title="Dados do Banco de Dados">
                         <Database size={12} />
                       </Badge>
-                      <Dropdown>
-                        <Dropdown.Toggle variant="outline-secondary" size="sm" className="border-0">
-                          <MoreVertical size={16} />
-                        </Dropdown.Toggle>
-                        <Dropdown.Menu>
-                          <Dropdown.Item onClick={() => handleEditObra(obra)}>
-                            <Eye size={16} className="me-2" />
-                            Editar Obra
-                          </Dropdown.Item>
-                          <Dropdown.Item onClick={() => confirmDeleteObra(obra)} className="text-danger">
-                            <Trash2 size={16} className="me-2" />
-                            Excluir Obra
-                          </Dropdown.Item>
-                        </Dropdown.Menu>
-                      </Dropdown>
+                      {canManageObra && (
+                        <Dropdown>
+                          <Dropdown.Toggle variant="outline-secondary" size="sm" className="border-0">
+                            <MoreVertical size={16} />
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu>
+                            <Dropdown.Item onClick={() => handleEditObra(obra)}>
+                              <Eye size={16} className="me-2" />
+                              Editar Obra
+                            </Dropdown.Item>
+                            <Dropdown.Item onClick={() => confirmDeleteObra(obra)} className="text-danger">
+                              <Trash2 size={16} className="me-2" />
+                              Excluir Obra
+                            </Dropdown.Item>
+                          </Dropdown.Menu>
+                        </Dropdown>
+                      )}
                     </div>
                   </Card.Header>
                   <Card.Body className="d-flex flex-column">
@@ -342,75 +416,99 @@ const ObrasAtivas = () => {
             <Col>
               <Card className="text-center p-5">
                 <Building size={48} className="mx-auto text-muted mb-3" />
-                <h4>Nenhuma obra encontrada</h4>
-                <p>Clique em "Nova Obra" para começar a cadastrar seus projetos.</p>
+                <h4>
+                  {currentUserRole === 'Admin' 
+                    ? "Nenhuma obra encontrada" 
+                    : "Nenhuma obra disponível"
+                  }
+                </h4>
+                <p>
+                  {currentUserRole === 'Admin' 
+                    ? "Clique em \"Nova Obra\" para começar a cadastrar seus projetos."
+                    : "Você não tem acesso a nenhuma obra no momento. Entre em contato com o administrador."
+                  }
+                </p>
+                {currentUserRole === 'User' && (
+                  <div className="mt-3">
+                    <Badge bg="warning" className="p-2">
+                      <Lock size={16} className="me-2" />
+                      Acesso controlado pelo administrador
+                    </Badge>
+                  </div>
+                )}
               </Card>
             </Col>
           )}
         </Row>
       )}
 
-      <Modal show={showModal} onHide={handleCloseModal} size="lg" centered>
-        <Modal.Header closeButton>
-          <Modal.Title>{obraToEdit ? "Editar Obra" : "Criar Nova Obra"}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <ObraForm
-            onSubmit={handleCreateObra}
-            initialData={obraToEdit}
-            isLoading={isSubmitting}
-            onCancel={handleCloseModal}
-          />
-        </Modal.Body>
-      </Modal>
+      {/* Modal para criação/edição - apenas para Admin */}
+      {canCreateObra && (
+        <Modal show={showModal} onHide={handleCloseModal} size="lg" centered>
+          <Modal.Header closeButton>
+            <Modal.Title>{obraToEdit ? "Editar Obra" : "Criar Nova Obra"}</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <ObraForm
+              onSubmit={handleCreateObra}
+              initialData={obraToEdit}
+              isLoading={isSubmitting}
+              onCancel={handleCloseModal}
+            />
+          </Modal.Body>
+        </Modal>
+      )}
 
-      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title className="text-danger">Confirmar Exclusão</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <div className="text-center">
-            <Trash2 size={48} className="text-danger mb-3" />
-            <h5>Tem certeza que deseja excluir esta obra?</h5>
-            {obraToDelete && (
-              <div className="mt-3">
-                <p>
-                  <strong>Obra:</strong> {obraToDelete.nome}
-                </p>
-                <p>
-                  <strong>Cliente:</strong> {obraToDelete.cliente}
-                </p>
-                <Alert variant="warning" className="mt-3">
-                  <strong>Atenção:</strong> Esta ação irá excluir permanentemente:
-                  <ul className="mt-2 mb-0 text-start">
-                    <li>A planilha do Google Sheets associada</li>
-                    <li>Todos os dados da obra no sistema</li>
-                  </ul>
-                  Esta ação não pode ser desfeita!
-                </Alert>
-              </div>
-            )}
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowDeleteModal(false)} disabled={isDeleting}>
-            Cancelar
-          </Button>
-          <Button variant="danger" onClick={handleDeleteObra} disabled={isDeleting}>
-            {isDeleting ? (
-              <>
-                <Spinner animation="border" size="sm" className="me-2" />
-                Excluindo...
-              </>
-            ) : (
-              <>
-                <Trash2 size={16} className="me-2" />
-                Excluir Obra
-              </>
-            )}
-          </Button>
-        </Modal.Footer>
-      </Modal>
+      {/* Modal de confirmação de exclusão - apenas para Admin */}
+      {canManageObra && (
+        <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
+          <Modal.Header closeButton>
+            <Modal.Title className="text-danger">Confirmar Exclusão</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="text-center">
+              <Trash2 size={48} className="text-danger mb-3" />
+              <h5>Tem certeza que deseja excluir esta obra?</h5>
+              {obraToDelete && (
+                <div className="mt-3">
+                  <p>
+                    <strong>Obra:</strong> {obraToDelete.nome}
+                  </p>
+                  <p>
+                    <strong>Cliente:</strong> {obraToDelete.cliente}
+                  </p>
+                  <Alert variant="warning" className="mt-3">
+                    <strong>Atenção:</strong> Esta ação irá excluir permanentemente:
+                    <ul className="mt-2 mb-0 text-start">
+                      <li>A planilha do Google Sheets associada</li>
+                      <li>Todos os dados da obra no sistema</li>
+                    </ul>
+                    Esta ação não pode ser desfeita!
+                  </Alert>
+                </div>
+              )}
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowDeleteModal(false)} disabled={isDeleting}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={handleDeleteObra} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Spinner animation="border" size="sm" className="me-2" />
+                  Excluindo...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} className="me-2" />
+                  Excluir Obra
+                </>
+              )}
+            </Button>
+          </Modal.Footer>
+        </Modal>
+      )}
     </Container>
   )
 }

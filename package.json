@@ -4,41 +4,47 @@
   "private": true,
   "proxy": "https://api-fornec.vercel.app",
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.0",
-    "@mui/material": "^7.1.2",
-    "axios": "^1.8.3",
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mui/material": "^5.15.20",
+    "axios": "^1.7.2",
     "bootstrap": "^5.3.3",
-    "chart.js": "^4.4.7",
+    "chart.js": "^4.4.3",
     "chartjs-plugin-datalabels": "^2.2.0",
     "cra-template": "1.2.0",
-    "jspdf": "^3.0.1",
-    "lucide-react": "^0.482.0",
-    "react": "^19.0.0",
-    "react-bootstrap": "^2.10.8",
-    "react-chartjs-2": "^5.3.0",
-    "react-dom": "^19.0.0",
+    "jspdf": "^2.5.1",
+    "lucide-react": "^0.395.0",
+    "react": "^18.3.1",
+    "react-bootstrap": "^2.10.2",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.3.1",
     "react-helmet": "^6.1.0",
-    "react-router-dom": "^7.3.0",
+    "react-router-dom": "^6.23.1",
     "react-scripts": "5.0.1",
-    "recharts": "^2.15.0",
-    "styled-components": "^6.1.16",
-    "web-vitals": "^4.2.4"
+    "recharts": "^2.12.7",
+    "styled-components": "^6.1.11",
+    "web-vitals": "^2.1.4"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [
-      "react-app",
-      "react-app/jest"
+      "react-app"
     ]
   },
   "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }

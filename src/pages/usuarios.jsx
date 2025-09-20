@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Container, Row, Col, Table, Button, Modal, Form, Tabs, Tab } from 'react-bootstrap';
+import { Container, Row, Col, Table, Button, Modal, Form, Tabs, Tab, Badge } from 'react-bootstrap';
+import { Settings, Building, Edit, Trash2, UserPlus, Users } from 'lucide-react';
 import ApiBase from '../services/ApiBase';
+import ManageUserObrasModal from '../components/modals/ManageUserObrasModal';
 
 const Usuarios = () => {
   const [pendingUsers, setPendingUsers] = useState([]);
@@ -15,6 +17,10 @@ const Usuarios = () => {
     email: '',
     role: '',
   });
+
+  // Estados para o modal de gerenciamento de obras
+  const [showObrasModal, setShowObrasModal] = useState(false);
+  const [selectedUserForObras, setSelectedUserForObras] = useState(null);
 
   function getToken() {
     let token = localStorage.getItem('token');
@@ -129,13 +135,29 @@ const Usuarios = () => {
     }
   };
 
+  // -- Lógica para gerenciamento de obras
+  const handleManageObras = (user) => {
+    setSelectedUserForObras(user);
+    setShowObrasModal(true);
+  };
+
+  const handleObrasModalClose = () => {
+    setShowObrasModal(false);
+    setSelectedUserForObras(null);
+  };
+
+  const handleObrasUpdateSuccess = () => {
+    console.log('Obras atualizadas com sucesso para o usuário');
+    // Não precisa recarregar a lista de usuários, apenas fechar o modal
+  };
+
   // Quantidade de administradores
   const adminCount = approvedUsers.filter((user) => user.role === 'Admin').length;
 
   return (
     <Container
       className="my-4"
-      style={{ fontFamily: 'Rawline', maxWidth: '900px' }}
+      style={{ fontFamily: 'Rawline', maxWidth: '1200px' }}
     >
       <Row>
         <Col>
@@ -151,7 +173,6 @@ const Usuarios = () => {
             >
             Gerenciamento de Usuários</h1>
           </div>
-
         </Col>
       </Row>
 
@@ -159,7 +180,20 @@ const Usuarios = () => {
         <Col>
           <Tabs defaultActiveKey="pendentes" id="user-management-tabs" className="mb-3">
             {/* Aba de Pendentes */}
-            <Tab eventKey="pendentes" title="Pendentes de Aprovação">
+            <Tab 
+              eventKey="pendentes" 
+              title={
+                <span>
+                  <UserPlus className="me-2" size={16} />
+                  Pendentes de Aprovação
+                  {pendingUsers.length > 0 && (
+                    <Badge bg="warning" className="ms-2">
+                      {pendingUsers.length}
+                    </Badge>
+                  )}
+                </span>
+              }
+            >
               <div className="table-responsive">
                 <Table striped bordered hover>
                   <thead>
@@ -208,7 +242,15 @@ const Usuarios = () => {
             </Tab>
 
             {/* Aba de Todos Usuários */}
-            <Tab eventKey="todos" title="Todos Usuários">
+            <Tab 
+              eventKey="todos" 
+              title={
+                <span>
+                  <Users className="me-2" size={16} />
+                  Todos Usuários ({approvedUsers.length})
+                </span>
+              }
+            >
               <div className="table-responsive">
                 <Table striped bordered hover>
                   <thead>
@@ -223,25 +265,53 @@ const Usuarios = () => {
                     {approvedUsers.length ? (
                       approvedUsers.map((user) => (
                         <tr key={user._id}>
-                          <td>{user.nome}</td>
+                          <td>
+                            <div className="d-flex align-items-center">
+                              <strong>{user.nome}</strong>
+                              {user.role === 'Admin' && (
+                                <Badge bg="primary" className="ms-2">Admin</Badge>
+                              )}
+                            </div>
+                          </td>
                           <td>{user.email}</td>
-                          <td>{user.role}</td>
+                          <td>
+                            <Badge 
+                              bg={user.role === 'Admin' ? 'primary' : 'secondary'}
+                            >
+                              {user.role}
+                            </Badge>
+                          </td>
                           <td>
                             <div className="d-flex flex-wrap gap-2">
                               <Button
-                                variant="primary"
+                                variant="outline-primary"
                                 size="sm"
                                 onClick={() => openEditModal(user)}
+                                title="Editar usuário"
                               >
-                                Editar
+                                <Edit size={14} />
                               </Button>
+                              
+                              {/* Botão de Gerenciar Obras - apenas para usuários não-Admin */}
+                              {user.role !== 'Admin' && (
+                                <Button
+                                  variant="outline-info"
+                                  size="sm"
+                                  onClick={() => handleManageObras(user)}
+                                  title="Gerenciar obras do usuário"
+                                >
+                                  <Building size={14} />
+                                </Button>
+                              )}
+                              
                               <Button
-                                variant="danger"
+                                variant="outline-danger"
                                 size="sm"
                                 onClick={() => handleDeleteUser(user)}
                                 disabled={user.role === 'Admin' && adminCount === 1}
+                                title="Excluir usuário"
                               >
-                                Apagar
+                                <Trash2 size={14} />
                               </Button>
                             </div>
                           </td>
@@ -256,6 +326,15 @@ const Usuarios = () => {
                     )}
                   </tbody>
                 </Table>
+              </div>
+
+              {/* Nota explicativa */}
+              <div className="mt-3">
+                <small className="text-muted">
+                  <Building size={14} className="me-1" />
+                  <strong>Nota:</strong> Use o botão <Building size={12} className="mx-1" /> para gerenciar quais obras cada usuário pode visualizar. 
+                  Administradores têm acesso a todas as obras automaticamente.
+                </small>
               </div>
             </Tab>
           </Tabs>
@@ -351,6 +430,14 @@ const Usuarios = () => {
           </Form>
         </Modal.Body>
       </Modal>
+
+      {/* Modal para gerenciar obras do usuário */}
+      <ManageUserObrasModal
+        show={showObrasModal}
+        onHide={handleObrasModalClose}
+        user={selectedUserForObras}
+        onSuccess={handleObrasUpdateSuccess}
+      />
     </Container>
   );
 };
