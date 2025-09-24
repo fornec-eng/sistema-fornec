@@ -6,7 +6,7 @@ class UserService {
    */
   async listarObrasAtivas() {
     try {
-      const response = await ApiBase.get("/obras/ativas")
+      const response = await ApiBase.get("/obras")
       return response.data
     } catch (error) {
       console.error("Erro ao listar obras ativas:", error)

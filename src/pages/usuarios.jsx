@@ -5,6 +5,14 @@ import ApiBase from '../services/ApiBase';
 import ManageUserObrasModal from '../components/modals/ManageUserObrasModal';
 
 const Usuarios = () => {
+  // Lista de emails autorizados a acessar esta página
+  const authorizedEmails = [
+    'sistema.fornec@gmail.com',
+    'admin@sistema.com',
+    'brendamontes00@outlook.com',
+    'gleicilaralu@gmail.com'
+  ];
+
   const [pendingUsers, setPendingUsers] = useState([]);
   const [approvedUsers, setApprovedUsers] = useState([]);
   const [showApproveModal, setShowApproveModal] = useState(false);
@@ -29,8 +37,18 @@ const Usuarios = () => {
     }
     return token;
   }
-  
+
+  function getCurrentUserEmail() {
+    let email = localStorage.getItem('email');
+    if (!email) {
+      email = sessionStorage.getItem('email');
+    }
+    return email;
+  }
+
   const token = getToken();
+  const currentUserEmail = getCurrentUserEmail();
+  const isAuthorized = currentUserEmail && authorizedEmails.includes(currentUserEmail);
 
   useEffect(() => {
     fetchUsers();
@@ -153,6 +171,33 @@ const Usuarios = () => {
 
   // Quantidade de administradores
   const adminCount = approvedUsers.filter((user) => user.role === 'Admin').length;
+
+  // Se o usuário não estiver autorizado, mostrar mensagem de acesso negado
+  if (!isAuthorized) {
+    return (
+      <Container
+        className="my-4 d-flex justify-content-center align-items-center"
+        style={{ fontFamily: 'Rawline', minHeight: '60vh' }}
+      >
+        <Row>
+          <Col className="text-center">
+            <div
+              className="p-5 bg-light border rounded"
+              style={{ maxWidth: '500px' }}
+            >
+              <h2 className="text-danger mb-4">
+                <Users size={48} className="mb-3 d-block mx-auto" />
+                Acesso Negado
+              </h2>
+              <p className="text-muted mb-0" style={{ fontSize: '1.1rem' }}>
+                Usuário não autorizado para acessar esta página.
+              </p>
+            </div>
+          </Col>
+        </Row>
+      </Container>
+    );
+  }
 
   return (
     <Container
@@ -292,17 +337,15 @@ const Usuarios = () => {
                                 <Edit size={14} />
                               </Button>
                               
-                              {/* Botão de Gerenciar Obras - apenas para usuários não-Admin */}
-                              {user.role !== 'Admin' && (
-                                <Button
-                                  variant="outline-info"
-                                  size="sm"
-                                  onClick={() => handleManageObras(user)}
-                                  title="Gerenciar obras do usuário"
-                                >
-                                  <Building size={14} />
-                                </Button>
-                              )}
+                              {/* Botão de Gerenciar Obras - para todos os usuários */}
+                              <Button
+                                variant="outline-info"
+                                size="sm"
+                                onClick={() => handleManageObras(user)}
+                                title="Gerenciar obras do usuário"
+                              >
+                                <Building size={14} />
+                              </Button>
                               
                               <Button
                                 variant="outline-danger"
@@ -332,8 +375,8 @@ const Usuarios = () => {
               <div className="mt-3">
                 <small className="text-muted">
                   <Building size={14} className="me-1" />
-                  <strong>Nota:</strong> Use o botão <Building size={12} className="mx-1" /> para gerenciar quais obras cada usuário pode visualizar. 
-                  Administradores têm acesso a todas as obras automaticamente.
+                  <strong>Nota:</strong> Use o botão <Building size={12} className="mx-1" /> para gerenciar quais obras cada usuário pode visualizar.
+                  Administradores podem gerenciar obras de qualquer usuário, incluindo outros administradores.
                 </small>
               </div>
             </Tab>

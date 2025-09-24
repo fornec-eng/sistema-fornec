@@ -24,8 +24,9 @@ const ManageUserObrasModal = ({ show, onHide, user, onSuccess }) => {
   const fetchData = async () => {
     setLoading(true)
     try {
-      // Buscar todas as obras ativas
+      // Buscar todas as obras ativas usando o mesmo endpoint de obras_ativas
       const obrasResponse = await userService.listarObrasAtivas()
+      console.log('ManageUserObrasModal - Resposta das obras:', obrasResponse)
       setObrasAtivas(obrasResponse.obras || [])
 
       // Buscar obras já permitidas para este usuário
@@ -38,7 +39,8 @@ const ManageUserObrasModal = ({ show, onHide, user, onSuccess }) => {
       }
     } catch (error) {
       console.error('Erro ao buscar dados:', error)
-      showAlert('Erro ao carregar dados das obras', 'danger')
+      const errorMessage = error.response?.data?.message || error.message || 'Erro desconhecido'
+      showAlert(`Erro ao carregar dados das obras: ${errorMessage}`, 'danger')
     } finally {
       setLoading(false)
     }
