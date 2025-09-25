@@ -53,8 +53,44 @@ const ObrasAtivas = () => {
       } else if (currentUserRole === 'User' && currentUserId) {
         // Usuário comum vê apenas obras permitidas
         try {
-          obrasResponse = await userService.listarObrasUsuario(currentUserId)
-          console.log('User - Carregando obras permitidas:', obrasResponse)
+          const userObrasResponse = await userService.listarObrasUsuario(currentUserId)
+          console.log('User - Resposta das obras do usuário:', userObrasResponse)
+          
+          if (userObrasResponse.error) {
+            throw new Error(userObrasResponse.message || 'Erro ao buscar obras do usuário')
+          }
+
+          // A API retorna { usuario: { obrasPermitidas: [...] } }
+          if (userObrasResponse.usuario && userObrasResponse.usuario.obrasPermitidas) {
+            // As obras já vêm populadas do populate no backend
+            const obrasPermitidas = userObrasResponse.usuario.obrasPermitidas
+            
+            // Transformar para o formato esperado
+            obrasResponse = {
+              error: false,
+              obras: obrasPermitidas.map(obra => ({
+                ...obra,
+                // Garantir que tenha todos os campos necessários
+                _id: obra._id,
+                nome: obra.nome,
+                cliente: obra.cliente,
+                endereco: obra.endereco,
+                valorContrato: obra.valorContrato,
+                status: obra.status,
+                dataInicio: obra.dataInicio,
+                dataPrevisaoTermino: obra.dataPrevisaoTermino,
+                spreadsheetId: obra.spreadsheetId || obra.sheets_id,
+                spreadsheetUrl: obra.spreadsheetUrl
+              }))
+            }
+            console.log('User - Obras permitidas transformadas:', obrasResponse)
+          } else {
+            // Usuário não tem obras permitidas
+            obrasResponse = {
+              error: false,
+              obras: []
+            }
+          }
         } catch (error) {
           console.error('Erro ao buscar obras do usuário:', error)
           // Fallback: se não conseguir buscar obras específicas, mostrar mensagem

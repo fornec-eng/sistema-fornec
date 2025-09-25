@@ -24,7 +24,7 @@ const ManageUserObrasModal = ({ show, onHide, user, onSuccess }) => {
   const fetchData = async () => {
     setLoading(true)
     try {
-      // Buscar todas as obras ativas usando o mesmo endpoint de obras_ativas
+      // Buscar todas as obras ativas
       const obrasResponse = await userService.listarObrasAtivas()
       console.log('ManageUserObrasModal - Resposta das obras:', obrasResponse)
       setObrasAtivas(obrasResponse.obras || [])
@@ -32,8 +32,20 @@ const ManageUserObrasModal = ({ show, onHide, user, onSuccess }) => {
       // Buscar obras já permitidas para este usuário
       try {
         const permitidasResponse = await userService.buscarObrasPermitidas(user._id)
-        setObrasPermitidas(permitidasResponse.obrasPermitidas || [])
+        console.log('ManageUserObrasModal - Resposta das obras permitidas:', permitidasResponse)
+        
+        // A API retorna { usuario: { obrasPermitidas: [...] } }
+        if (permitidasResponse.usuario && permitidasResponse.usuario.obrasPermitidas) {
+          // Extrair apenas os IDs das obras permitidas
+          const idsObrasPermitidas = permitidasResponse.usuario.obrasPermitidas.map(obra => 
+            typeof obra === 'object' ? obra._id : obra
+          )
+          setObrasPermitidas(idsObrasPermitidas)
+        } else {
+          setObrasPermitidas([])
+        }
       } catch (error) {
+        console.warn('Erro ao buscar obras permitidas (usuário pode não ter nenhuma obra):', error)
         // Se não encontrar obras permitidas, inicializa como array vazio
         setObrasPermitidas([])
       }
@@ -71,17 +83,25 @@ const ManageUserObrasModal = ({ show, onHide, user, onSuccess }) => {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await userService.gerenciarObrasPermitidas(user._id, obrasPermitidas)
-      showAlert('Permissões de obras atualizadas com sucesso!', 'success')
+      console.log('Salvando obras permitidas:', obrasPermitidas)
+      const response = await userService.gerenciarObrasPermitidas(user._id, obrasPermitidas)
+      console.log('Resposta do salvamento:', response)
       
-      // Chama callback de sucesso após um breve delay
-      setTimeout(() => {
-        if (onSuccess) onSuccess()
-        onHide()
-      }, 1500)
+      if (response.error) {
+        showAlert(response.message || 'Erro ao salvar permissões', 'danger')
+      } else {
+        showAlert('Permissões de obras atualizadas com sucesso!', 'success')
+        
+        // Chama callback de sucesso após um breve delay
+        setTimeout(() => {
+          if (onSuccess) onSuccess()
+          onHide()
+        }, 1500)
+      }
     } catch (error) {
       console.error('Erro ao salvar permissões:', error)
-      showAlert('Erro ao salvar permissões. Tente novamente.', 'danger')
+      const errorMessage = error.response?.data?.message || error.message || 'Erro ao salvar permissões'
+      showAlert(`Erro: ${errorMessage}`, 'danger')
     } finally {
       setSaving(false)
     }
@@ -132,6 +152,7 @@ const ManageUserObrasModal = ({ show, onHide, user, onSuccess }) => {
                 variant="outline-primary" 
                 size="sm" 
                 onClick={handleSelectAll}
+                disabled={obrasAtivas.length === 0}
               >
                 {obrasPermitidas.length === obrasAtivas.length ? 'Desselecionar Todas' : 'Selecionar Todas'}
               </Button>

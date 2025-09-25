@@ -6,7 +6,7 @@ class UserService {
    */
   async listarObrasAtivas() {
     try {
-      const response = await ApiBase.get("/obras")
+      const response = await ApiBase.get("/obras-ativas")
       return response.data
     } catch (error) {
       console.error("Erro ao listar obras ativas:", error)
@@ -19,7 +19,8 @@ class UserService {
    */
   async listarObrasUsuario(userId) {
     try {
-      const response = await ApiBase.get(`/obras/usuario/${userId}`)
+      // Usar o endpoint correto baseado nas suas rotas
+      const response = await ApiBase.get(`/user/${userId}/obras-permitidas`)
       return response.data
     } catch (error) {
       console.error("Erro ao listar obras do usuário:", error)
@@ -32,8 +33,9 @@ class UserService {
    */
   async gerenciarObrasPermitidas(userId, obrasPermitidas) {
     try {
-      const response = await ApiBase.put(`/users/${userId}/obras-permitidas`, {
-        obrasPermitidas: obrasPermitidas
+      // Corrigir a rota: usar /user/ (singular) e o campo correto obrasIds
+      const response = await ApiBase.put(`/user/${userId}/obras-permitidas`, {
+        obrasIds: obrasPermitidas // Campo correto baseado no controller
       })
       return response.data
     } catch (error) {
@@ -47,7 +49,8 @@ class UserService {
    */
   async buscarObrasPermitidas(userId) {
     try {
-      const response = await ApiBase.get(`/users/${userId}/obras-permitidas`)
+      // Usar a rota correta
+      const response = await ApiBase.get(`/user/${userId}/obras-permitidas`)
       return response.data
     } catch (error) {
       console.error("Erro ao buscar obras permitidas:", error)
