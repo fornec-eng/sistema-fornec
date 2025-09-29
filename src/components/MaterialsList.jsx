@@ -32,54 +32,49 @@ function MaterialsList({
   useEffect(() => {
     if (gastos && gastos.materiais) {
       setMateriais(gastos.materiais)
-
-      // Extrair locais únicos
       const locaisUnicos = [...new Set(gastos.materiais.map((m) => m.localCompra).filter(Boolean))]
       setLocais(locaisUnicos)
-
-      // Extrair solicitantes únicos
       const solicitantesUnicos = [...new Set(gastos.materiais.map((m) => m.solicitante).filter(Boolean))]
       setSolicitantes(solicitantesUnicos)
-
-      // Check if materials already have pagamentos property
-      const materialsWithPayments = gastos.materiais.some(
-        (material) => material.pagamentos && Array.isArray(material.pagamentos),
-      )
-
-      if (materialsWithPayments) {
-        const pagamentosData = {}
-        gastos.materiais.forEach((material) => {
-          pagamentosData[material._id] = material.pagamentos || []
-        })
-        setMateriaisPagamentos(pagamentosData)
-      } else {
-        fetchAllPayments(gastos.materiais)
-      }
     }
   }, [gastos])
 
-  const fetchAllPayments = async (materiaisList) => {
-    const pagamentosData = {}
+  // FUNÇÃO ATUALIZADA: Define o status correto com a nova regra de 99%
+  const calcularStatusCorreto = (material) => {
+    const valorTotal = material.valor || 0
+    const valorPago = material.valorTotalPagamentos || 0
 
-    for (const material of materiaisList) {
-      try {
-        const pagamentos = await apiService.materiais.listarPagamentos(material._id)
-        pagamentosData[material._id] = pagamentos
-      } catch (error) {
-        // If material doesn't have payments endpoint or error, set empty array
-        pagamentosData[material._id] = []
-      }
+    // CONDIÇÃO 1: Se o status já vem como "efetuado" (override manual)
+    if (material.statusPagamento === "efetuado") {
+      return "efetuado"
     }
 
-    setMateriaisPagamentos(pagamentosData)
+    // CONDIÇÃO 2 (NOVA): Se o valor pago for >= 99% do valor total
+    if (valorTotal > 0 && valorPago / valorTotal >= 0.99) {
+      return "efetuado"
+    }
+
+    // Se nenhuma das condições for atendida, o status é "pendente".
+    return "pendente"
+  }
+
+  // FUNÇÃO NOVA: Garante que o valor pago exibido seja consistente com o status
+  const getValorPagoConsistente = (material) => {
+    const statusFinal = calcularStatusCorreto(material)
+
+    // Se o status for "Concluído" (efetuado), o valor pago a ser exibido é o valor total.
+    if (statusFinal === "efetuado") {
+      return material.valor || 0
+    }
+
+    // Se o status for "Pendente", exibimos a soma real dos pagamentos parciais.
+    return material.valorTotalPagamentos || 0
   }
 
   const calcularValoresMaterial = (material) => {
     const valorCombinado = material.valor || 0
-
-    // If material already has valorTotalPagamentos from API, use it
-    const valorPago = material.valorTotalPagamentos || 0
-
+    // ATUALIZADO: Usa a nova função para garantir consistência
+    const valorPago = getValorPagoConsistente(material)
     const valorRestante = valorCombinado - valorPago
 
     return {
@@ -92,10 +87,7 @@ function MaterialsList({
   const getStatusBadge = (status) => {
     const statusConfig = {
       pendente: { variant: "warning", label: "Pendente" },
-      efetuado: { variant: "success", label: "Efetuado" },
-      em_processamento: { variant: "info", label: "Em Processamento" },
-      cancelado: { variant: "danger", label: "Cancelado" },
-      atrasado: { variant: "danger", label: "Atrasado" },
+      efetuado: { variant: "success", label: "Concluído" },
     }
     return statusConfig[status] || statusConfig.pendente
   }
@@ -136,71 +128,37 @@ function MaterialsList({
     }
   }
 
-  // Filtrar materiais
   const materiaisFiltrados = materiais.filter((material) => {
+    const statusCalculado = calcularStatusCorreto(material)
     const matchesSearch =
       searchTerm === "" ||
       (material.numeroNota && material.numeroNota.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (material.descricao && material.descricao.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (material.localCompra && material.localCompra.toLowerCase().includes(searchTerm.toLowerCase()))
-
-    const matchesStatus = filterStatus === "" || material.statusPagamento === filterStatus
-
+    const matchesStatus = filterStatus === "" || statusCalculado === filterStatus
     const matchesLocal = filterLocal === "" || material.localCompra === filterLocal
-
     const matchesSolicitante = filterSolicitante === "" || material.solicitante === filterSolicitante
-
     return matchesSearch && matchesStatus && matchesLocal && matchesSolicitante
   })
 
-  // Calcular totais
   const calcularTotais = () => {
     const total = materiaisFiltrados.reduce((acc, m) => acc + (m.valor || 0), 0)
-    const pago = materiaisFiltrados
-      .filter((m) => m.statusPagamento === "efetuado")
-      .reduce((acc, m) => acc + (m.valor || 0), 0)
-    const pendente = materiaisFiltrados
-      .filter((m) => m.statusPagamento === "pendente")
-      .reduce((acc, m) => acc + (m.valor || 0), 0)
-    const emProcessamento = materiaisFiltrados
-      .filter((m) => m.statusPagamento === "em_processamento")
-      .reduce((acc, m) => acc + (m.valor || 0), 0)
-    const atrasado = materiaisFiltrados
-      .filter((m) => m.statusPagamento === "atrasado")
-      .reduce((acc, m) => acc + (m.valor || 0), 0)
+    // ATUALIZADO: Usa a nova função para somar os valores consistentes
+    const pago = materiaisFiltrados.reduce((acc, m) => acc + getValorPagoConsistente(m), 0)
+    const pendente = total - pago
+    const quantidadePago = materiaisFiltrados.filter((m) => calcularStatusCorreto(m) === "efetuado").length
+    const quantidadePendente = materiaisFiltrados.filter((m) => calcularStatusCorreto(m) === "pendente").length
 
     return {
       total,
       pago,
       pendente,
-      emProcessamento,
-      atrasado,
-      quantidadePago: materiaisFiltrados.filter((m) => m.statusPagamento === "efetuado").length,
-      quantidadePendente: materiaisFiltrados.filter((m) => m.statusPagamento === "pendente").length,
-      quantidadeEmProcessamento: materiaisFiltrados.filter((m) => m.statusPagamento === "em_processamento").length,
-      quantidadeAtrasado: materiaisFiltrados.filter((m) => m.statusPagamento === "atrasado").length,
+      quantidadePago,
+      quantidadePendente,
     }
   }
 
-  // Calcular estatísticas por local
-  const calcularEstatisticasPorLocal = () => {
-    const estatisticas = {}
-    materiaisFiltrados.forEach((material) => {
-      const local = material.localCompra || "Não informado"
-      if (!estatisticas[local]) {
-        estatisticas[local] = {
-          quantidade: 0,
-          valor: 0,
-        }
-      }
-      estatisticas[local].quantidade++
-      estatisticas[local].valor += material.valor || 0
-    })
-    return estatisticas
-  }
-
   const totais = calcularTotais()
-  const estatisticasPorLocal = calcularEstatisticasPorLocal()
   const percentualPago = totais.total > 0 ? (totais.pago / totais.total) * 100 : 0
 
   if (loading) {
@@ -240,7 +198,6 @@ function MaterialsList({
             </Alert>
           )}
 
-          {/* Cards de Resumo Financeiro */}
           <div className="row mb-4">
             <div className="col-md-3">
               <div className="border rounded p-3">
@@ -259,7 +216,7 @@ function MaterialsList({
                   style={{ height: "8px" }}
                 />
                 <small className="text-muted">
-                  {percentualPago.toFixed(1)}% pago ({totais.quantidadePago} itens)
+                  {percentualPago.toFixed(1)}% pago ({totais.quantidadePago} concluídos)
                 </small>
               </div>
             </div>
@@ -272,14 +229,18 @@ function MaterialsList({
             </div>
             <div className="col-md-3">
               <div className="border rounded p-3">
-                <h6 className="text-muted mb-1">Em Processamento</h6>
-                <h4 className="text-info">{formatCurrency(totais.emProcessamento)}</h4>
-                <small className="text-muted">{totais.quantidadeEmProcessamento} em processamento</small>
+                <h6 className="text-muted mb-1">Taxa de Conclusão</h6>
+                <h4 className="text-success">{totais.quantidadePago}</h4>
+                <small className="text-muted">
+                  {materiaisFiltrados.length > 0
+                    ? ((totais.quantidadePago / materiaisFiltrados.length) * 100).toFixed(1)
+                    : 0}
+                  % concluídos
+                </small>
               </div>
             </div>
           </div>
 
-          {/* Filtros */}
           <Row className="mb-3">
             <Col md={3}>
               <InputGroup>
@@ -297,10 +258,7 @@ function MaterialsList({
               <Form.Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                 <option value="">Todos os status</option>
                 <option value="pendente">Pendente</option>
-                <option value="efetuado">Efetuado</option>
-                <option value="em_processamento">Em Processamento</option>
-                <option value="cancelado">Cancelado</option>
-                <option value="atrasado">Atrasado</option>
+                <option value="efetuado">Concluído</option>
               </Form.Select>
             </Col>
             <Col md={3}>
@@ -335,60 +293,35 @@ function MaterialsList({
             </Col>
           </Row>
 
-          {/* Estatísticas por Local de Compra */}
-          {Object.keys(estatisticasPorLocal).length > 0 && (
-            <Row className="mb-4">
-              <Col>
-                <h6>Distribuição por Local de Compra:</h6>
-                <Row>
-                  {Object.entries(estatisticasPorLocal)
-                    .slice(0, 4)
-                    .map(([local, stats]) => (
-                      <Col md={3} key={local} className="mb-2">
-                        <Card className="h-100 border-0 shadow-sm">
-                          <Card.Body className="py-2 px-3">
-                            <h6 className="mb-1" style={{ fontSize: "0.85rem" }}>
-                              {local}
-                            </h6>
-                            <div className="d-flex justify-content-between">
-                              <small className="text-muted">{stats.quantidade} itens</small>
-                              <small className="fw-bold text-success">{formatCurrency(stats.valor)}</small>
-                            </div>
-                          </Card.Body>
-                        </Card>
-                      </Col>
-                    ))}
-                </Row>
-              </Col>
-            </Row>
-          )}
-
-          {/* Tabela de Materiais */}
-          {materiaisFiltrados.length === 0 ? (
-            <div className="text-center p-4 text-muted">
-              <Package size={48} className="mb-3" />
-              <p>Nenhum material encontrado.</p>
-            </div>
-          ) : (
-            <Table striped bordered hover responsive>
-              <thead>
+          <Table striped bordered hover responsive>
+            <thead>
+              <tr>
+                <th>Nota Fiscal</th>
+                <th>Descrição</th>
+                <th>Local de Compra</th>
+                <th>Solicitante</th>
+                <th>Valor Combinado</th>
+                <th>Valor Pago</th>
+                <th>Valor Restante</th>
+                <th>Data</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {materiaisFiltrados.length === 0 ? (
                 <tr>
-                  <th>Nota Fiscal</th>
-                  <th>Descrição</th>
-                  <th>Local de Compra</th>
-                  <th>Solicitante</th>
-                  <th>Valor Combinado</th>
-                  <th>Valor Pago</th>
-                  <th>Valor Restante</th>
-                  <th>Data</th>
-                  <th>Status</th>
-                  <th>Ações</th>
+                  <td colSpan={10} className="text-center p-4 text-muted">
+                    <Package size={48} className="mb-3" />
+                    <p>Nenhum material encontrado.</p>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {materiaisFiltrados.map((material) => {
-                  const statusBadge = getStatusBadge(material.statusPagamento)
+              ) : (
+                materiaisFiltrados.map((material) => {
                   const { valorCombinado, valorPago, valorRestante } = calcularValoresMaterial(material)
+                  const statusCalculado = calcularStatusCorreto(material)
+                  const statusBadge = getStatusBadge(statusCalculado)
+                  const percentualPagoIndividual = valorCombinado > 0 ? (valorPago / valorCombinado) * 100 : 0
 
                   return (
                     <tr key={material._id}>
@@ -416,14 +349,14 @@ function MaterialsList({
                       </td>
                       <td>
                         <strong className="text-success">{formatCurrency(valorPago)}</strong>
-                        {valorPago > 0 && (
+                        {valorPago > 0 && valorCombinado > 0 && (
                           <small className="d-block text-muted">
-                            {((valorPago / valorCombinado) * 100).toFixed(1)}%
+                            {Math.min(percentualPagoIndividual, 100).toFixed(1)}%
                           </small>
                         )}
                       </td>
                       <td>
-                        <strong className={valorRestante > 0 ? "text-warning" : "text-success"}>
+                        <strong className={valorRestante > 0.01 ? "text-warning" : "text-success"}>
                           {formatCurrency(valorRestante)}
                         </strong>
                       </td>
@@ -466,10 +399,9 @@ function MaterialsList({
                       </td>
                     </tr>
                   )
-                })}
+                }))}
               </tbody>
-            </Table>
-          )}
+          </Table>
         </Card.Body>
       </Card>
 
@@ -482,7 +414,7 @@ function MaterialsList({
         />
       )}
     </>
-  )
+    )
 }
 
 export default MaterialsList
