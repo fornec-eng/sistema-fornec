@@ -12,6 +12,7 @@ import {
   Search,
   Filter,
   CheckCircle,
+  ChevronDown,
 } from "lucide-react"
 
 const AgendaGastos = ({
@@ -34,6 +35,15 @@ const AgendaGastos = ({
     futuro: { search: "", status: "", tipo: "", obra: "" },
     efetuados: { search: "", status: "", tipo: "", obra: "" },
     pastWeeks: { search: "", status: "", tipo: "", obra: "" },
+  })
+
+  const [itemsToShow, setItemsToShow] = useState({
+    emAtraso: 100,
+    proximosDias: 100,
+    proximaSemana: 100,
+    futuro: 100,
+    efetuados: 100,
+    pastWeeks: 100,
   })
 
   const [tipos, setTipos] = useState([])
@@ -90,6 +100,13 @@ const AgendaGastos = ({
         ...prev[section],
         [field]: value,
       },
+    }))
+  }
+
+  const loadMoreItems = (section) => {
+    setItemsToShow((prev) => ({
+      ...prev,
+      [section]: prev[section] + 100,
     }))
   }
 
@@ -178,6 +195,11 @@ const AgendaGastos = ({
     const filteredGastos = filterGastos(gastos, sectionFilters)
     const groupedGastos = groupGastosByType(filteredGastos)
     const filteredTotal = filteredGastos.reduce((acc, g) => acc + (g.valor || 0), 0)
+    
+    // Paginação: limitar itens mostrados
+    const maxItems = itemsToShow[sectionKey] || 100
+    const allGastosFlat = Object.values(groupedGastos).flat()
+    const hasMoreItems = allGastosFlat.length > maxItems
 
     return (
       <Accordion.Item eventKey={eventKey}>
@@ -267,108 +289,137 @@ const AgendaGastos = ({
                 <p>Nenhum gasto encontrado com os filtros aplicados.</p>
               </div>
             ) : (
-              Object.entries(groupedGastos).map(([tipo, gastosDoTipo]) => (
-                <div key={tipo} className="mb-4">
-                  <h6 className={`text-${corHeader} mb-3`}>
-                    <Badge bg={corHeader} className="me-2">
-                      {tipo}
-                    </Badge>
-                    ({gastosDoTipo.length} itens)
-                  </h6>
-                  <Table responsive hover className="mb-3" size="sm">
-                    <thead className="table-light">
-                      <tr>
-                        <th>{getColumnHeader(tipo)}</th>
-                        <th>Descrição / Nº Nota</th>
-                        <th>Obra</th>
-                        <th>Solicitante</th>
-                        <th>Data</th>
-                        <th>Dias</th>
-                        <th>Status</th>
-                        <th className="text-end">Valor</th>
-                        <th>Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {gastosDoTipo.map((gasto, index) => {
-                        const dias = getDiasRestantes(gasto.dataVencimento || gasto.dataPagamento || gasto.data)
-                        const statusBadge = getStatusBadge(getStatusPagamento(gasto))
-                        return (
-                          <tr key={index}>
-                            <td>
-                              <strong>{getColumnValue(gasto)}</strong>
-                            </td>
-                            <td>
-                              <div>
-                                {gasto.descricao && (
-                                  <small className="d-block text-muted">
-                                    {gasto.descricao.length > 50 
-                                      ? gasto.descricao.substring(0, 50) + "..." 
-                                      : gasto.descricao}
-                                  </small>
-                                )}
-                                {gasto.numeroNota && (
-                                  <small className="d-block">
-                                    <Badge bg="secondary" className="me-1">NF</Badge>
-                                    {gasto.numeroNota}
-                                  </small>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <small className="text-muted">{gasto.obraNome || "Fornec"}</small>
-                            </td>
-                            <td>
-                              <small className="text-muted">{gasto.solicitante || "-"}</small>
-                            </td>
-                            <td>
-                              <small>{formatDate(gasto.dataVencimento || gasto.dataPagamento || gasto.data)}</small>
-                            </td>
-                            <td>
-                              {dias !== null ? (
-                                <Badge bg={dias <= 0 ? "danger" : dias <= 7 ? "warning" : "info"} className="small">
-                                  {dias <= 0 ? `${Math.abs(dias)}d atraso` : `${dias}d`}
-                                </Badge>
-                              ) : (
-                                <Badge bg="secondary" className="small">-</Badge>
-                              )}
-                            </td>
-                            <td>
-                              <Badge bg={statusBadge.variant} className="small">{statusBadge.label}</Badge>
+              <>
+                {Object.entries(groupedGastos).map(([tipo, gastosDoTipo]) => {
+                  // Aplicar limite de paginação por tipo
+                  const gastosLimitados = gastosDoTipo.slice(0, maxItems)
+                  
+                  return (
+                    <div key={tipo} className="mb-4">
+                      <h6 className={`text-${corHeader} mb-3`}>
+                        <Badge bg={corHeader} className="me-2">
+                          {tipo}
+                        </Badge>
+                        ({gastosDoTipo.length} itens)
+                        {gastosDoTipo.length > gastosLimitados.length && (
+                          <small className="text-muted ms-2">
+                            (mostrando {gastosLimitados.length})
+                          </small>
+                        )}
+                      </h6>
+                      <Table responsive hover className="mb-3" size="sm">
+                        <thead className="table-light">
+                          <tr>
+                            <th>{getColumnHeader(tipo)}</th>
+                            <th>Descrição / Nº Nota</th>
+                            <th>Obra</th>
+                            <th>Solicitante</th>
+                            <th>Data</th>
+                            <th>Dias</th>
+                            <th>Status</th>
+                            <th className="text-end">Valor</th>
+                            <th>Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gastosLimitados.map((gasto, index) => {
+                            const dias = getDiasRestantes(gasto.dataVencimento || gasto.dataPagamento || gasto.data)
+                            const statusBadge = getStatusBadge(getStatusPagamento(gasto))
+                            return (
+                              <tr key={gasto._id || index}>
+                                <td>
+                                  <strong>{getColumnValue(gasto)}</strong>
+                                </td>
+                                <td>
+                                  <div>
+                                    {gasto.descricao && (
+                                      <small className="d-block text-muted">
+                                        {gasto.descricao.length > 50 
+                                          ? gasto.descricao.substring(0, 50) + "..." 
+                                          : gasto.descricao}
+                                      </small>
+                                    )}
+                                    {gasto.numeroNota && (
+                                      <small className="d-block">
+                                        <Badge bg="secondary" className="me-1">NF</Badge>
+                                        {gasto.numeroNota}
+                                      </small>
+                                    )}
+                                  </div>
+                                </td>
+                                <td>
+                                  <small className="text-muted">{gasto.obraNome || "Fornec"}</small>
+                                </td>
+                                <td>
+                                  <small className="text-muted">{gasto.solicitante || "-"}</small>
+                                </td>
+                                <td>
+                                  <small>{formatDate(gasto.dataVencimento || gasto.dataPagamento || gasto.data)}</small>
+                                </td>
+                                <td>
+                                  {dias !== null ? (
+                                    <Badge bg={dias <= 0 ? "danger" : dias <= 7 ? "warning" : "info"} className="small">
+                                      {dias <= 0 ? `${Math.abs(dias)}d atraso` : `${dias}d`}
+                                    </Badge>
+                                  ) : (
+                                    <Badge bg="secondary" className="small">-</Badge>
+                                  )}
+                                </td>
+                                <td>
+                                  <Badge bg={statusBadge.variant} className="small">{statusBadge.label}</Badge>
+                                </td>
+                                <td className="text-end">
+                                  <strong>{formatCurrency(gasto.valor)}</strong>
+                                </td>
+                                <td>
+                                  <div className="d-flex gap-1">
+                                    <Button variant="outline-primary" size="sm" onClick={() => handleOpenEditModal(gasto)}>
+                                      <Edit size={12} />
+                                    </Button>
+                                    <Button variant="outline-danger" size="sm" onClick={() => handleOpenDeleteModal(gasto)}>
+                                      <Trash2 size={12} />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                        <tfoot className="table-light">
+                          <tr>
+                            <td colSpan="7" className="text-end">
+                              <strong>Subtotal {tipo}:</strong>
                             </td>
                             <td className="text-end">
-                              <strong>{formatCurrency(gasto.valor)}</strong>
+                              <strong className={`text-${corHeader}`}>
+                                {formatCurrency(gastosDoTipo.reduce((acc, g) => acc + (g.valor || 0), 0))}
+                              </strong>
                             </td>
-                            <td>
-                              <div className="d-flex gap-1">
-                                <Button variant="outline-primary" size="sm" onClick={() => handleOpenEditModal(gasto)}>
-                                  <Edit size={12} />
-                                </Button>
-                                <Button variant="outline-danger" size="sm" onClick={() => handleOpenDeleteModal(gasto)}>
-                                  <Trash2 size={12} />
-                                </Button>
-                              </div>
-                            </td>
+                            <td></td>
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                    <tfoot className="table-light">
-                      <tr>
-                        <td colSpan="7" className="text-end">
-                          <strong>Subtotal {tipo}:</strong>
-                        </td>
-                        <td className="text-end">
-                          <strong className={`text-${corHeader}`}>
-                            {formatCurrency(gastosDoTipo.reduce((acc, g) => acc + (g.valor || 0), 0))}
-                          </strong>
-                        </td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </Table>
-                </div>
-              ))
+                        </tfoot>
+                      </Table>
+                    </div>
+                  )
+                })}
+
+                {/* Botão Carregar Mais */}
+                {hasMoreItems && (
+                  <div className="text-center mb-3">
+                    <Button 
+                      variant="outline-primary" 
+                      size="sm"
+                      onClick={() => loadMoreItems(sectionKey)}
+                    >
+                      <ChevronDown size={16} className="me-2" />
+                      Carregar mais 100 itens
+                    </Button>
+                    <small className="d-block text-muted mt-2">
+                      Mostrando {Math.min(maxItems, allGastosFlat.length)} de {allGastosFlat.length} itens
+                    </small>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Total geral */}

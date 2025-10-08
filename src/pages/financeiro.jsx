@@ -26,8 +26,8 @@ const Financeiro = () => {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState(null)
-  const [todosGastos, setTodosGastos] = useState([]) // Renomeado de gastosFuturos
-  const [loadingGastos, setLoadingGastos] = useState(false) // Renomeado de loadingFuturos
+  const [todosGastos, setTodosGastos] = useState([])
+  const [loadingGastos, setLoadingGastos] = useState(false)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState("resumo")
 
@@ -281,8 +281,6 @@ const Financeiro = () => {
       
       if (!response.error) {
         console.log(`Total de gastos encontrados: ${response.gastos.length}`)
-        console.log("Amostra de gastos:", response.gastos.slice(0, 3))
-        
         setTodosGastos(response.gastos || [])
       } else {
         console.error("Erro na resposta:", response.message)
@@ -310,13 +308,11 @@ const Financeiro = () => {
     if (!editingItem) return
 
     const serviceMap = {
-      // Plural forms (current)
       Materiais: apiService.materiais,
       "Mão de Obra": apiService.maoObra,
       Equipamentos: apiService.equipamentos,
       Contratos: apiService.contratos,
       Outros: apiService.outrosGastos,
-      // Singular forms (from API)
       Material: apiService.materiais,
       "Mao de Obra": apiService.maoObra,
       MaoObra: apiService.maoObra,
@@ -327,25 +323,16 @@ const Financeiro = () => {
       OutrosGastos: apiService.outrosGastos,
     }
 
-    console.log("[v0] Item type received:", editingItem.tipo)
-    console.log("[v0] Available service mappings:", Object.keys(serviceMap))
-
     const service = serviceMap[editingItem.tipo]
     if (service) {
       try {
-        console.log("[v0] Editing item:", editingItem)
-        console.log("[v0] Form data received:", formData)
-
         const dataToSubmit = {
           ...formData,
           _id: editingItem._id,
           obraId: formData.obraId || editingItem.obraId,
         }
 
-        console.log("[v0] Data being sent to API:", dataToSubmit)
-
         const response = await service.update(editingItem._id, dataToSubmit)
-        console.log("[v0] API response:", response)
 
         if (response.error) {
           throw new Error(response.message || "Erro na atualização")
@@ -354,15 +341,15 @@ const Financeiro = () => {
         showAlert("Item atualizado com sucesso!", "success")
         handleCloseEditModal()
 
-        // Refresh all data
-        await fetchAllData()
+        // OTIMIZAÇÃO: Apenas recarregar a lista de gastos, não tudo
         if (activeTab === "agenda") {
           await fetchTodosGastos()
+        } else if (activeTab === "resumo") {
+          // Se estiver no resumo, recarregar tudo
+          await fetchAllData()
+          const detalhes = await organizarGastosPorObra()
+          setDetalhesGastos(detalhes)
         }
-
-        // Refresh details
-        const detalhes = await organizarGastosPorObra()
-        setDetalhesGastos(detalhes)
       } catch (error) {
         console.error("[v0] Error updating item:", error)
         showAlert(
@@ -373,10 +360,8 @@ const Financeiro = () => {
         )
       }
     } else {
-      console.error("[v0] No service found for item type:", editingItem.tipo)
-      console.error("[v0] Available mappings:", Object.keys(serviceMap))
       showAlert(
-        `Tipo de item não reconhecido para edição: "${editingItem.tipo}". Tipos disponíveis: ${Object.keys(serviceMap).join(", ")}`,
+        `Tipo de item não reconhecido para edição: "${editingItem.tipo}".`,
         "danger",
       )
     }
@@ -411,10 +396,16 @@ const Financeiro = () => {
         await service.delete(deletingItem._id)
         showAlert("Item excluído com sucesso!", "success")
         handleCloseDeleteModal()
-        fetchAllData()
-        fetchTodosGastos()
-        const detalhes = await organizarGastosPorObra()
-        setDetalhesGastos(detalhes)
+        
+        // OTIMIZAÇÃO: Apenas recarregar a lista de gastos, não tudo
+        if (activeTab === "agenda") {
+          await fetchTodosGastos()
+        } else if (activeTab === "resumo") {
+          // Se estiver no resumo, recarregar tudo
+          await fetchAllData()
+          const detalhes = await organizarGastosPorObra()
+          setDetalhesGastos(detalhes)
+        }
       }
     } catch (error) {
       console.error("Erro ao excluir item:", error)
