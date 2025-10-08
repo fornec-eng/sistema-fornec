@@ -228,114 +228,185 @@ class ApiService {
   // ==================== MÉTODOS ESPECIAIS ====================
 
   /**
-   * Buscar todos os gastos futuros (com datas de vencimento/pagamento futuras)
+   * Extrair nome da obra de forma segura
+   */
+  extrairNomeObra = (obraId, obras) => {
+    // Se obraId é null ou undefined, é gasto da Fornec
+    if (!obraId) return "Fornec (sem obra associada)"
+    
+    // Se obraId é um objeto com nome
+    if (typeof obraId === "object" && obraId !== null && obraId.nome) {
+      return obraId.nome
+    }
+    
+    // Se é um ID string, buscar na lista de obras
+    if (typeof obraId === "string" && obras && Array.isArray(obras)) {
+      const obra = obras.find((o) => o && o._id === obraId)
+      return obra ? obra.nome : "Fornec (sem obra associada)"
+    }
+    
+    // Se obraId é um objeto com _id, buscar na lista
+    if (typeof obraId === "object" && obraId._id && obras && Array.isArray(obras)) {
+      const obra = obras.find((o) => o && o._id === obraId._id)
+      return obra ? obra.nome : "Fornec (sem obra associada)"
+    }
+    
+    return "Fornec (sem obra associada)"
+  }
+
+  /**
+   * Buscar TODOS os gastos (incluindo futuros e já efetuados)
+   * Mantém todos os campos originais da API
+   */
+  buscarTodosGastos = async () => {
+    try {
+      const params = { limit: 60000 }
+      
+      // Buscar todos os tipos de gastos e obras
+      const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes, obrasRes] = await Promise.all([
+        this.materiais.getAll(params),
+        this.maoObra.getAll(params),
+        this.equipamentos.getAll(params),
+        this.contratos.getAll(params),
+        this.outrosGastos.getAll(params),
+        this.obras.getAll(),
+      ])
+
+      const obras = obrasRes.obras || []
+      const todosGastos = []
+
+      // Processar Materiais
+      if (materiaisRes.materiais) {
+        materiaisRes.materiais.forEach((material) => {
+          todosGastos.push({
+            ...material, // Manter todos os campos originais
+            tipo: "Material",
+            obraNome: this.extrairNomeObra(material.obraId, obras),
+            dataVencimento: material.data || material.dataVencimento,
+            dataPagamento: material.data,
+          })
+        })
+      }
+
+      // Processar Mão de Obra
+      if (maoObraRes.maoObras) {
+        maoObraRes.maoObras.forEach((maoObra) => {
+          todosGastos.push({
+            ...maoObra, // Manter todos os campos originais
+            tipo: "Mão de Obra",
+            obraNome: this.extrairNomeObra(maoObra.obraId, obras),
+            dataVencimento: maoObra.fimContrato || maoObra.inicioContrato,
+            dataPagamento: maoObra.inicioContrato,
+          })
+        })
+      }
+
+      // Processar Equipamentos
+      if (equipamentosRes.equipamentos) {
+        equipamentosRes.equipamentos.forEach((equipamento) => {
+          todosGastos.push({
+            ...equipamento, // Manter todos os campos originais
+            tipo: "Equipamento",
+            obraNome: this.extrairNomeObra(equipamento.obraId, obras),
+            dataVencimento: equipamento.data || equipamento.dataVencimento,
+            dataPagamento: equipamento.data,
+          })
+        })
+      }
+
+      // Processar Contratos
+      if (contratosRes.contratos) {
+        contratosRes.contratos.forEach((contrato) => {
+          const valorContrato = contrato.valorInicial || contrato.valor || 0
+          
+          todosGastos.push({
+            ...contrato, // Manter todos os campos originais
+            tipo: "Contrato",
+            valor: valorContrato,
+            obraNome: this.extrairNomeObra(contrato.obraId, obras),
+            dataVencimento: contrato.inicioContrato || contrato.dataVencimento,
+            dataPagamento: contrato.inicioContrato,
+            valorTotalPagamentos: contrato.valorTotalPagamentos || 0,
+            saldoPendente: valorContrato - (contrato.valorTotalPagamentos || 0),
+          })
+        })
+      }
+
+      // Processar Outros Gastos - MANTENDO TODOS OS CAMPOS
+      if (outrosGastosRes.gastos) {
+        outrosGastosRes.gastos.forEach((gasto) => {
+          todosGastos.push({
+            // Manter TODOS os campos originais da API
+            _id: gasto._id,
+            descricao: gasto.descricao,
+            valor: gasto.valor,
+            data: gasto.data,
+            categoriaLivre: gasto.categoriaLivre,
+            formaPagamento: gasto.formaPagamento,
+            statusPagamento: gasto.statusPagamento,
+            observacoes: gasto.observacoes,
+            chavePixBoleto: gasto.chavePixBoleto,
+            numeroDocumento: gasto.numeroDocumento,
+            fornecedor: gasto.fornecedor,
+            obraId: gasto.obraId,
+            criadoPor: gasto.criadoPor,
+            createdAt: gasto.createdAt,
+            updatedAt: gasto.updatedAt,
+            __v: gasto.__v,
+            
+            // Adicionar campos derivados
+            tipo: "Outros",
+            obraNome: this.extrairNomeObra(gasto.obraId, obras),
+            dataVencimento: gasto.data || gasto.dataVencimento,
+            dataPagamento: gasto.data,
+          })
+        })
+      }
+
+      // Ordenar por data (mais recente primeiro)
+      todosGastos.sort((a, b) => {
+        const dataA = new Date(a.dataVencimento || a.data || a.dataPagamento || 0)
+        const dataB = new Date(b.dataVencimento || b.data || b.dataPagamento || 0)
+        return dataB - dataA
+      })
+
+      return {
+        error: false,
+        gastos: todosGastos,
+        total: todosGastos.length,
+      }
+    } catch (error) {
+      console.error("Erro ao buscar todos os gastos:", error)
+      return {
+        error: true,
+        message: error.message,
+        gastos: [],
+      }
+    }
+  }
+
+  /**
+   * Buscar todos os gastos futuros (mantido para compatibilidade)
+   * Filtra apenas gastos com data futura ou status pendente
    */
   buscarGastosFuturos = async () => {
     try {
-      // Buscar todos os tipos de gastos
-      const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.all([
-        this.materiais.getAll(),
-        this.maoObra.getAll(),
-        this.equipamentos.getAll(),
-        this.contratos.getAll(),
-        this.outrosGastos.getAll(),
-      ])
+      const todosGastosResponse = await this.buscarTodosGastos()
+      
+      if (todosGastosResponse.error) {
+        return todosGastosResponse
+      }
 
       const hoje = new Date()
       hoje.setHours(0, 0, 0, 0)
 
-      const gastosFuturos = []
-
-      // Processar materiais
-      if (materiaisRes.materiais) {
-        materiaisRes.materiais.forEach((material) => {
-          const dataVencimento = this.extrairDataVencimento(material)
-          if (dataVencimento && dataVencimento >= hoje) {
-            gastosFuturos.push({
-              ...material,
-              tipo: "Material",
-              dataVencimento: dataVencimento.toISOString(),
-              dataPagamento: material.data,
-            })
-          }
-        })
-      }
-
-      // Processar mão de obra
-      if (maoObraRes.maoObras) {
-        maoObraRes.maoObras.forEach((maoObra) => {
-          const dataVencimento = this.extrairDataVencimento(maoObra)
-          if (dataVencimento && dataVencimento >= hoje) {
-            gastosFuturos.push({
-              ...maoObra,
-              tipo: "Mão de Obra",
-              dataVencimento: dataVencimento.toISOString(),
-              dataPagamento: maoObra.fimContrato || maoObra.inicioContrato,
-            })
-          }
-        })
-      }
-
-      // Processar equipamentos
-      if (equipamentosRes.equipamentos) {
-        equipamentosRes.equipamentos.forEach((equipamento) => {
-          const dataVencimento = this.extrairDataVencimento(equipamento)
-          if (dataVencimento && dataVencimento >= hoje) {
-            gastosFuturos.push({
-              ...equipamento,
-              tipo: "Equipamento",
-              dataVencimento: dataVencimento.toISOString(),
-              dataPagamento: equipamento.data,
-            })
-          }
-        })
-      }
-
-      // Processar contratos
-      if (contratosRes.contratos) {
-        contratosRes.contratos.forEach((contrato) => {
-          // Usar valorInicial ao invés de valor
-          const valorContrato = contrato.valorInicial || contrato.valor || 0
-          const dataVencimento = this.extrairDataVencimento(contrato)
-
-          // Verificar se tem pagamentos pendentes
-          const temPagamentosPendentes =
-            contrato.statusGeralPagamentos &&
-            contrato.statusGeralPagamentos !== "todos_pagos" &&
-            contrato.statusGeralPagamentos !== "sem_pagamentos"
-
-          if ((dataVencimento && dataVencimento >= hoje) || temPagamentosPendentes) {
-            gastosFuturos.push({
-              ...contrato,
-              tipo: "Contrato",
-              valor: valorContrato,
-              dataVencimento: dataVencimento ? dataVencimento.toISOString() : new Date().toISOString(),
-              dataPagamento: contrato.inicioContrato,
-              // Adicionar informações dos pagamentos
-              valorTotalPagamentos: contrato.valorTotalPagamentos || 0,
-              saldoPendente: valorContrato - (contrato.valorTotalPagamentos || 0),
-            })
-          }
-        })
-      }
-
-      // Processar outros gastos
-      if (outrosGastosRes.gastos) {
-        outrosGastosRes.gastos.forEach((gasto) => {
-          const dataVencimento = this.extrairDataVencimento(gasto)
-          if (dataVencimento && dataVencimento >= hoje) {
-            gastosFuturos.push({
-              ...gasto,
-              tipo: "Outros",
-              dataVencimento: dataVencimento.toISOString(),
-              dataPagamento: gasto.data,
-            })
-          }
-        })
-      }
-
-      // Ordenar por data de vencimento
-      gastosFuturos.sort((a, b) => new Date(a.dataVencimento) - new Date(b.dataVencimento))
+      // Filtrar apenas gastos futuros ou pendentes
+      const gastosFuturos = todosGastosResponse.gastos.filter((gasto) => {
+        const dataVencimento = new Date(gasto.dataVencimento || gasto.data || gasto.dataPagamento)
+        const isPendente = gasto.statusPagamento === "pendente" || gasto.status === "pendente"
+        
+        return dataVencimento >= hoje || isPendente
+      })
 
       return {
         error: false,
@@ -356,7 +427,6 @@ class ApiService {
    * Extrair data de vencimento de um gasto
    */
   extrairDataVencimento = (gasto) => {
-    // Lista de possíveis campos de data (em ordem de prioridade)
     const camposData = [
       "dataVencimento",
       "dataPagamento",
@@ -384,10 +454,6 @@ class ApiService {
    */
   buscarTodosPagamentosSemanais = async () => {
     try {
-      // Este método deveria buscar pagamentos semanais
-      // Como não vejo um endpoint específico, vou retornar os dados dos gastos
-      // Você pode ajustar conforme sua API
-
       const gastosFuturos = await this.buscarGastosFuturos()
 
       return {
@@ -409,9 +475,6 @@ class ApiService {
    */
   marcarPagamentoEfetuado = async (obraId, pagamentoId) => {
     try {
-      // Implementar conforme sua API
-      // Por enquanto, vou simular uma atualização de status
-
       console.log(`Marcando pagamento ${pagamentoId} da obra ${obraId} como efetuado`)
 
       return {

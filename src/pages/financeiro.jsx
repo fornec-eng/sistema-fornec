@@ -18,7 +18,7 @@ import ContratosResumo from "../components/financeiro/ContratosResumo"
 import EntradasList from "../components/EntradasList"
 import EntradaModal from "../components/modals/EntradaModal"
 
-import { FileText } from "lucide-react" // Novo ícone para contratos
+import { FileText } from "lucide-react"
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend, ChartDataLabels)
 
@@ -26,8 +26,8 @@ const Financeiro = () => {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState(null)
-  const [gastosFuturos, setGastosFuturos] = useState([])
-  const [loadingFuturos, setLoadingFuturos] = useState(false)
+  const [todosGastos, setTodosGastos] = useState([]) // Renomeado de gastosFuturos
+  const [loadingGastos, setLoadingGastos] = useState(false) // Renomeado de loadingFuturos
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState("resumo")
 
@@ -77,7 +77,7 @@ const Financeiro = () => {
     const obraIdString = extrairObraId(gasto.obraId)
     if (obraIdString && obras && Array.isArray(obras)) {
       const obra = obras.find((o) => o && o._id === obraIdString)
-      return obra ? obra.nome : `Obra ID: ${obraIdString}`
+      return obra ? obra.nome : "Fornec (sem obra associada)"
     }
     return "Fornec (sem obra associada)"
   }
@@ -132,6 +132,8 @@ const Financeiro = () => {
         ])
 
       const obras = obrasRes.obras || []
+      setObras(obras)
+      
       const gastos = [
         ...(materiaisRes.materiais || []),
         ...(maoObraRes.maoObras || []),
@@ -261,28 +263,36 @@ const Financeiro = () => {
 
   useEffect(() => {
     if (activeTab === "agenda") {
-      fetchGastosFuturos()
+      fetchTodosGastos()
     } else if (activeTab === "entradas") {
       fetchEntradas()
     }
   }, [activeTab])
 
-  const fetchGastosFuturos = async () => {
-    setLoadingFuturos(true)
+  /**
+   * Buscar TODOS os gastos (incluindo já efetuados)
+   * Usa o novo método buscarTodosGastos do apiService
+   */
+  const fetchTodosGastos = async () => {
+    setLoadingGastos(true)
     try {
-      const [response, obrasRes] = await Promise.all([apiService.buscarGastosFuturos(), apiService.obras.getAll()])
+      console.log("Buscando todos os gastos...")
+      const response = await apiService.buscarTodosGastos()
+      
       if (!response.error) {
-        const obras = obrasRes.obras || []
-        const gastosComObra = (response.gastos || []).map((gasto) => ({
-          ...gasto,
-          obraNome: extrairNomeObraSeguro(gasto, obras),
-        }))
-        setGastosFuturos(gastosComObra)
+        console.log(`Total de gastos encontrados: ${response.gastos.length}`)
+        console.log("Amostra de gastos:", response.gastos.slice(0, 3))
+        
+        setTodosGastos(response.gastos || [])
+      } else {
+        console.error("Erro na resposta:", response.message)
+        showAlert("Erro ao buscar gastos: " + response.message, "danger")
       }
     } catch (error) {
-      console.error("Erro ao buscar gastos futuros:", error)
+      console.error("Erro ao buscar todos os gastos:", error)
+      showAlert("Erro ao carregar gastos", "danger")
     } finally {
-      setLoadingFuturos(false)
+      setLoadingGastos(false)
     }
   }
 
@@ -326,7 +336,6 @@ const Financeiro = () => {
         console.log("[v0] Editing item:", editingItem)
         console.log("[v0] Form data received:", formData)
 
-        // Prepare data for update - ensure we have the ID and all required fields
         const dataToSubmit = {
           ...formData,
           _id: editingItem._id,
@@ -348,7 +357,7 @@ const Financeiro = () => {
         // Refresh all data
         await fetchAllData()
         if (activeTab === "agenda") {
-          await fetchGastosFuturos()
+          await fetchTodosGastos()
         }
 
         // Refresh details
@@ -392,6 +401,9 @@ const Financeiro = () => {
       Equipamentos: apiService.equipamentos,
       Contratos: apiService.contratos,
       Outros: apiService.outrosGastos,
+      Material: apiService.materiais,
+      Equipamento: apiService.equipamentos,
+      Contrato: apiService.contratos,
     }
     const service = serviceMap[deletingItem.tipo]
     try {
@@ -400,7 +412,7 @@ const Financeiro = () => {
         showAlert("Item excluído com sucesso!", "success")
         handleCloseDeleteModal()
         fetchAllData()
-        fetchGastosFuturos()
+        fetchTodosGastos()
         const detalhes = await organizarGastosPorObra()
         setDetalhesGastos(detalhes)
       }
@@ -445,7 +457,7 @@ const Financeiro = () => {
     gasto.statusPagamento || gasto.status || (gasto.efetuado ? "efetuado" : "pendente")
 
   const agendaData = useMemo(() => {
-    if (!gastosFuturos.length)
+    if (!todosGastos.length)
       return {
         proximosDias: [],
         proximaSemana: [],
@@ -460,16 +472,16 @@ const Financeiro = () => {
     const proximos14dias = new Date(hoje)
     proximos14dias.setDate(hoje.getDate() + 14)
 
-    const emAtraso = gastosFuturos.filter((g) => {
-      const dataVenc = new Date(g.dataVencimento || g.dataPagamento || g.dataInicio)
+    const emAtraso = todosGastos.filter((g) => {
+      const dataVenc = new Date(g.dataVencimento || g.dataPagamento || g.dataInicio || g.data)
       return dataVenc < hoje && getStatusPagamento(g) !== "efetuado"
     })
-    const proximosDias = gastosFuturos.filter((g) => {
-      const dataVenc = new Date(g.dataVencimento || g.dataPagamento || g.dataInicio)
+    const proximosDias = todosGastos.filter((g) => {
+      const dataVenc = new Date(g.dataVencimento || g.dataPagamento || g.dataInicio || g.data)
       return dataVenc >= hoje && dataVenc <= proximos7dias && getStatusPagamento(g) !== "efetuado"
     })
-    const proximaSemana = gastosFuturos.filter((g) => {
-      const dataVenc = new Date(g.dataVencimento || g.dataPagamento || g.dataInicio)
+    const proximaSemana = todosGastos.filter((g) => {
+      const dataVenc = new Date(g.dataVencimento || g.dataPagamento || g.dataInicio || g.data)
       return dataVenc > proximos7dias && dataVenc <= proximos14dias && getStatusPagamento(g) !== "efetuado"
     })
 
@@ -481,9 +493,9 @@ const Financeiro = () => {
       totalProximosDias: proximosDias.reduce((acc, g) => acc + (g.valor || 0), 0),
       totalProximaSemana: proximaSemana.reduce((acc, g) => acc + (g.valor || 0), 0),
     }
-  }, [gastosFuturos])
+  }, [todosGastos])
 
-  const totalGastosFuturos = useMemo(() => gastosFuturos.reduce((acc, g) => acc + (g.valor || 0), 0), [gastosFuturos])
+  const totalGastos = useMemo(() => todosGastos.reduce((acc, g) => acc + (g.valor || 0), 0), [todosGastos])
 
   const chartOptions = {
     responsive: true,
@@ -519,8 +531,8 @@ const Financeiro = () => {
 
   const handleEntradaSuccess = (entrada) => {
     showAlert(`Entrada ${editingEntrada ? "atualizada" : "adicionada"} com sucesso!`, "success")
-    fetchAllData() // Refresh all data including stats
-    fetchEntradas() // Refresh entradas list
+    fetchAllData()
+    fetchEntradas()
   }
 
   const handleDeleteEntrada = async (entradaId) => {
@@ -578,7 +590,7 @@ const Financeiro = () => {
           </Col>
           <Col>
             <h1 className="mb-0">Painel Financeiro</h1>
-            <p className="text-muted">Visão geral das finanças e agenda de gastos futuros.</p>
+            <p className="text-muted">Visão geral das finanças e agenda de gastos.</p>
           </Col>
           <Col xs="auto" className="d-flex gap-2">
             <Button variant="success" onClick={() => handleOpenEntradaModal()}>
@@ -633,9 +645,9 @@ const Financeiro = () => {
           >
             <AgendaGastos
               agendaData={agendaData}
-              loadingFuturos={loadingFuturos}
-              gastosFuturos={gastosFuturos}
-              totalGastosFuturos={totalGastosFuturos}
+              loadingFuturos={loadingGastos}
+              gastosFuturos={todosGastos}
+              totalGastosFuturos={totalGastos}
               formatCurrency={formatCurrency}
               formatDate={formatDate}
               getDiasRestantes={getDiasRestantes}
