@@ -33,7 +33,7 @@ import GoogleSheetsService from "../services/GoogleSheetsService"
 import ContratosList from "../components/ContratosList"
 import MaterialsList from "../components/MaterialsList"
 import MaoObraList from "../components/MaoObraList"
-import EquipamentosList from "../components/MaterialsList" // Corrected typo in import
+import EquipamentosList from "../components/EquipamentosList"
 import EntradasList from "../components/EntradasList"
 
 const ObraDashboard = () => {

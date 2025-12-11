@@ -3,7 +3,7 @@ import { Container, Nav, Navbar, Offcanvas, Button } from 'react-bootstrap';
 import { NavLink, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import ApiBase from '../services/ApiBase';
-import logo_mini from '../images/logo_min_fornec.svg';
+import logo_mini from '../images/Bidding_Brasil.png';
 
 /* 
   Estilizamos o NavLink para mudar o fundo e a cor do texto 
@@ -73,17 +73,16 @@ const Menu = () => {
   // Se NÃO estiver logado, renderiza apenas o brand
   if (!storedEmail) {
     return (
-      <Navbar bg="dark" variant="dark" className="mb-3">
+      <Navbar bg="light" variant="light" className="mb-3">
         <Container fluid>
           <Navbar.Brand href="/">
             <img
-              alt="Logo Fornec"
+              alt="Logo BiddingTech"
               src={logo_mini}
-              width="30"
-              height="30"
+              height="40"
               className="d-inline-block align-top"
-            />{' '}
-            Fornec Engenharia
+              style={{ width: 'auto' }}
+            />
           </Navbar.Brand>
         </Container>
       </Navbar>
@@ -91,17 +90,16 @@ const Menu = () => {
   }
 
   return (
-    <Navbar bg="dark" variant="dark" expand="false" className="mb-3">
+    <Navbar bg="light" variant="light" expand="false" className="mb-3">
       <Container fluid>
         <Navbar.Brand href="/home">
           <img
-            alt="Logo Fornec"
+            alt="Logo BiddingTech"
             src={logo_mini}
-            width="30"
-            height="30"
+            height="40"
             className="d-inline-block align-top"
-          />{' '}
-          Fornec Engenharia
+            style={{ width: 'auto' }}
+          />
         </Navbar.Brand>
 
         {/* Botão que abre o Offcanvas */}

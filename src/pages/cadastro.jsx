@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import ApiBase from '../services/ApiBase';
 import fundo_cadastro from '../images/fundo_cadastro.jpg';
-import logo_fornec from '../images/logo_mini_fornec.png';
+import logo_biddingtech from '../images/Bidding_Brasil.png';
 import { useNavigate } from 'react-router-dom';
 
 function Cadastro() {
@@ -53,9 +53,9 @@ function Cadastro() {
 
         <Col md={6} className="d-none d-md-flex flex-column" style={{ backgroundColor: '#f8f9fa', fontFamily: 'Rawline' }}>
           <div style={{ justifyContent: 'center' }}>
-            <Image src={logo_fornec} alt="Logo Fornec" style={{ width: '100px' }} />
+            <Image src={logo_biddingtech} alt="Logo BiddingTech" style={{ width: '200px', height: 'auto' }} />
             <h2 style={{ fontSize: '1.75rem', marginBottom: '2rem' }}>
-              Cadastro novo usuário Fornec
+              Cadastro novo usuário BiddingTech
             </h2>
           </div>
           <div style={{ display: 'flex', justifyContent: 'center' }}>

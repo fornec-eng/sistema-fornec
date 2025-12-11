@@ -100,44 +100,34 @@ const PagamentoSemanal = () => {
       setObras(obras)
       console.log("Obras carregadas:", obras.length)
 
-      // Buscar todos os gastos
-      const [materiaisRes, maoObraRes, equipamentosRes, contratosRes, outrosGastosRes] = await Promise.allSettled([
-        apiService.materiais.getAll(),
-        apiService.maoObra.getAll(),
-        apiService.equipamentos.getAll(),
-        apiService.contratos.getAll(),
-        apiService.outrosGastos.getAll(),
-      ])
+      // CORREÇÃO: Usar o mesmo método eficiente do financeiro.jsx
+      // Buscar TODOS os gastos usando o método agregado
+      const response = await apiService.buscarTodosGastos()
 
-      // Processar resultados das promises
-      const materiais = materiaisRes.status === 'fulfilled' ? (materiaisRes.value?.materiais || []) : []
-      const maoObras = maoObraRes.status === 'fulfilled' ? (maoObraRes.value?.maoObras || []) : []
-      const equipamentos = equipamentosRes.status === 'fulfilled' ? (equipamentosRes.value?.equipamentos || []) : []
-      const contratos = contratosRes.status === 'fulfilled' ? (contratosRes.value?.contratos || []) : []
-      const outrosGastos = outrosGastosRes.status === 'fulfilled' ? (outrosGastosRes.value?.gastos || []) : []
+      if (response.error) {
+        throw new Error(response.message || "Erro ao buscar gastos")
+      }
 
-      // Combinar todos os gastos com tipo
-      const todosGastos = [
-        ...materiais.map(item => ({ ...item, tipo: "Material" })),
-        ...maoObras.map(item => ({ ...item, tipo: "Mão de Obra" })),
-        ...equipamentos.map(item => ({ ...item, tipo: "Equipamento" })),
-        ...contratos.map(item => ({ ...item, tipo: "Contrato" })),
-        ...outrosGastos.map(item => ({ ...item, tipo: "Outros" })),
-      ]
-
+      const todosGastos = response.gastos || []
       console.log("Total de gastos carregados:", todosGastos.length)
 
       // Filtrar apenas itens da semana atual
       const { inicioSemana, fimSemana } = getDatasSemanaAtual()
-      const gastosSemanaAtual = todosGastos.filter(gasto => 
+      const gastosSemanaAtual = todosGastos.filter(gasto =>
         estaNoIntervaloSemana(gasto, inicioSemana, fimSemana)
       )
 
       console.log("Gastos da semana atual:", gastosSemanaAtual.length)
 
       // Mapear gastos com informações da obra
+      // CORREÇÃO: Melhorar a extração do obraId para suportar objetos e strings
       const gastosComObra = gastosSemanaAtual.map(gasto => {
-        const obra = obras.find(o => o._id === gasto.obraId)
+        // Extrair obraId corretamente (pode ser string ou objeto)
+        const obraId = typeof gasto.obraId === "object" && gasto.obraId?._id
+          ? gasto.obraId._id
+          : gasto.obraId
+
+        const obra = obras.find(o => o._id === obraId)
         return {
           ...gasto,
           obraNome: obra ? obra.nome : null,
@@ -145,7 +135,7 @@ const PagamentoSemanal = () => {
       })
 
       setPagamentos(gastosComObra)
-      
+
     } catch (error) {
       console.error("Erro ao buscar dados:", error)
       showAlert("Erro ao carregar dados. Verifique a conexão.", "danger")

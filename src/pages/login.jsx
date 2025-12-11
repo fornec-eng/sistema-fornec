@@ -4,7 +4,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ApiBase from '../services/ApiBase';
 import login_fundo from '../images/fundo_login.png';
-import logo_fornec from '../images/logo_fornec.png';
+import logo_biddingtech from '../images/Bidding_Brasil.png';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -88,7 +88,7 @@ const Login = () => {
       </Col>
 
       <Col md={6} style={{ backgroundColor: '#f8f9fa' }}>
-        <Image src={logo_fornec} alt="Fornec Engenharia" style={{ width: '240px' }} className="d-flex mx-auto" />
+        <Image src={logo_biddingtech} alt="BiddingTech" style={{ width: '400px', height: 'auto' }} className="d-flex mx-auto" />
 
         <Form style={{ maxWidth: '500px', margin: '0 auto' }} onSubmit={handleLogin}>
           <Form.Group className="mb-4">

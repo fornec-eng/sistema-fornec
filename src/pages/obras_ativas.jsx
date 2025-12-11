@@ -211,7 +211,22 @@ const ObrasAtivas = () => {
         const response = await apiService.obras.create(dadosObraComPlanilha)
 
         if (!response.error) {
-          showAlert(`Obra "${formData.nome}" criada com sucesso e planilha associada!`, "success")
+          // Associar automaticamente a obra ao usuário que está criando
+          if (currentUserId && response.obra?._id) {
+            try {
+              console.log(`Associando obra ${response.obra._id} ao usuário ${currentUserId}`)
+              await userService.associarObra(currentUserId, response.obra._id)
+              showAlert(`Obra "${formData.nome}" criada, planilha associada e vinculada ao seu usuário!`, "success")
+            } catch (associacaoError) {
+              console.error("Erro ao associar obra ao usuário:", associacaoError)
+              showAlert(
+                `Obra "${formData.nome}" criada com sucesso, mas erro ao associar ao seu usuário. Você pode fazer isso manualmente.`,
+                "warning"
+              )
+            }
+          } else {
+            showAlert(`Obra "${formData.nome}" criada com sucesso e planilha associada!`, "success")
+          }
           setShowModal(false)
           fetchObras()
         } else {
