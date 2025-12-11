@@ -535,7 +535,7 @@ const AgendaGastos = ({
       </Row>
 
       {/* Accordion de Gastos */}
-      <Accordion defaultActiveKey="0" className="mb-4">
+      <Accordion className="mb-4">
         {renderAccordionSection(
           agendaData.emAtraso,
           "Em Atraso",

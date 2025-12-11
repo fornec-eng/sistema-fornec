@@ -309,17 +309,34 @@ const ObraDashboard = () => {
         if (isEdit) {
           response = await apiService.materiais.update(data._id, payload)
         } else {
-          response = await apiService.materiais.create(payload)
+          // Separar pagamentos do payload antes de criar o material
+          const { pagamentos, pagamentoInicial, ...materialData } = payload
+          response = await apiService.materiais.create(materialData)
 
-          // If there's an initial payment, add it after material creation
-          if (payload.pagamentoInicial && response.material) {
-            console.log("[v0] Adding initial payment:", payload.pagamentoInicial)
+          // Se há múltiplas parcelas (novo sistema), adicionar cada uma
+          if (pagamentos && Array.isArray(pagamentos) && pagamentos.length > 0 && response.material) {
+            console.log("[v0] Adding multiple payments:", pagamentos.length, "payments")
             try {
-              await apiService.materiais.adicionarPagamento(response.material._id, payload.pagamentoInicial)
+              for (const pagamento of pagamentos) {
+                await apiService.materiais.adicionarPagamento(response.material._id, pagamento)
+              }
+              console.log("[v0] All payments added successfully")
+            } catch (paymentError) {
+              console.error("[v0] Error adding payments:", paymentError)
+              showAlert(
+                "Material criado, mas houve erro ao adicionar alguns pagamentos. Você pode adicioná-los manualmente.",
+                "warning",
+              )
+            }
+          }
+          // Se há pagamento inicial (sistema antigo), adicionar
+          else if (pagamentoInicial && response.material) {
+            console.log("[v0] Adding initial payment:", pagamentoInicial)
+            try {
+              await apiService.materiais.adicionarPagamento(response.material._id, pagamentoInicial)
               console.log("[v0] Initial payment added successfully")
             } catch (paymentError) {
               console.error("[v0] Error adding initial payment:", paymentError)
-              // Don't fail the whole operation, just show a warning
               showAlert(
                 "Material criado, mas houve erro ao adicionar o pagamento inicial. Você pode adicioná-lo manualmente.",
                 "warning",
