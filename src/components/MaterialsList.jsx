@@ -39,22 +39,37 @@ function MaterialsList({
     }
   }, [gastos])
 
-  // FUNÇÃO ATUALIZADA: Define o status correto com a nova regra de 99%
+  // FUNÇÃO ATUALIZADA: Define o status baseado nos status individuais de cada pagamento
   const calcularStatusCorreto = (material) => {
-    const valorTotal = material.valor || 0
-    const valorPago = material.valorTotalPagamentos || 0
+    // Se não há pagamentos, verificar valor pago vs valor total (sistema legado)
+    if (!material.pagamentos || material.pagamentos.length === 0) {
+      const valorTotal = material.valor || 0
+      const valorPago = material.valorTotalPagamentos || 0
 
-    // CONDIÇÃO 1: Se o status já vem como "efetuado" (override manual)
-    if (material.statusPagamento === "efetuado") {
+      // CONDIÇÃO 1: Se o status já vem como "efetuado" (override manual)
+      if (material.statusPagamento === "efetuado") {
+        return "efetuado"
+      }
+
+      // CONDIÇÃO 2: Se o valor pago for >= 99% do valor total
+      if (valorTotal > 0 && valorPago / valorTotal >= 0.99) {
+        return "efetuado"
+      }
+
+      return "pendente"
+    }
+
+    // NOVA LÓGICA: Verificar o status de cada pagamento individual
+    const todosOsPagamentosPagos = material.pagamentos.every(
+      (pag) => pag.statusPagamento === "pago" || pag.statusPagamento === "efetuado"
+    )
+
+    // Se todos os pagamentos foram efetuados, status é "concluído"
+    if (todosOsPagamentosPagos) {
       return "efetuado"
     }
 
-    // CONDIÇÃO 2 (NOVA): Se o valor pago for >= 99% do valor total
-    if (valorTotal > 0 && valorPago / valorTotal >= 0.99) {
-      return "efetuado"
-    }
-
-    // Se nenhuma das condições for atendida, o status é "pendente".
+    // Se pelo menos um pagamento está pendente ou atrasado, status é "pendente"
     return "pendente"
   }
 

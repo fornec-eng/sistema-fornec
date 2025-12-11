@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(ls:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git hash-object:*)",
+      "Bash(git update-index:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

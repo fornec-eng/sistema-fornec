@@ -34,6 +34,27 @@ function EquipamentosList({
     }
   }, [gastos])
 
+  // FUNÇÃO: Define o status baseado nos status individuais de cada pagamento
+  const calcularStatusCorreto = (equipamento) => {
+    // Se não há pagamentos, usar statusPagamento direto (sistema legado)
+    if (!equipamento.pagamentos || equipamento.pagamentos.length === 0) {
+      return equipamento.statusPagamento || "pendente"
+    }
+
+    // NOVA LÓGICA: Verificar o status de cada pagamento individual
+    const todosOsPagamentosPagos = equipamento.pagamentos.every(
+      (pag) => pag.statusPagamento === "pago" || pag.statusPagamento === "efetuado"
+    )
+
+    // Se todos os pagamentos foram efetuados, status é "concluído"
+    if (todosOsPagamentosPagos) {
+      return "efetuado"
+    }
+
+    // Se pelo menos um pagamento está pendente ou atrasado, status é "pendente"
+    return "pendente"
+  }
+
   const getStatusBadge = (status) => {
     const statusConfig = {
       pendente: { variant: "warning", label: "Pendente" },
@@ -51,12 +72,13 @@ function EquipamentosList({
   }
 
   const equipamentosFiltrados = equipamentos.filter((equipamento) => {
+    const statusCalculado = calcularStatusCorreto(equipamento)
     const matchesSearch =
       searchTerm === "" ||
       (equipamento.numeroNota && equipamento.numeroNota.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (equipamento.descricao && equipamento.descricao.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (equipamento.localCompra && equipamento.localCompra.toLowerCase().includes(searchTerm.toLowerCase()))
-    const matchesStatus = filterStatus === "" || equipamento.statusPagamento === filterStatus
+    const matchesStatus = filterStatus === "" || statusCalculado === filterStatus
     const matchesLocal = filterLocal === "" || equipamento.localCompra === filterLocal
     const matchesSolicitante = filterSolicitante === "" || equipamento.solicitante === filterSolicitante
     return matchesSearch && matchesStatus && matchesLocal && matchesSolicitante
@@ -65,11 +87,11 @@ function EquipamentosList({
   const calcularTotais = () => {
     const total = equipamentosFiltrados.reduce((acc, e) => acc + (e.valor || 0), 0)
     const pago = equipamentosFiltrados
-      .filter((e) => e.statusPagamento === "efetuado")
+      .filter((e) => calcularStatusCorreto(e) === "efetuado")
       .reduce((acc, e) => acc + (e.valor || 0), 0)
     const pendente = total - pago
-    const quantidadePago = equipamentosFiltrados.filter((e) => e.statusPagamento === "efetuado").length
-    const quantidadePendente = equipamentosFiltrados.filter((e) => e.statusPagamento === "pendente").length
+    const quantidadePago = equipamentosFiltrados.filter((e) => calcularStatusCorreto(e) === "efetuado").length
+    const quantidadePendente = equipamentosFiltrados.filter((e) => calcularStatusCorreto(e) === "pendente").length
 
     return {
       total,
@@ -238,7 +260,8 @@ function EquipamentosList({
                 </tr>
               ) : (
                 equipamentosFiltrados.map((equipamento) => {
-                  const statusBadge = getStatusBadge(equipamento.statusPagamento)
+                  const statusCalculado = calcularStatusCorreto(equipamento)
+                  const statusBadge = getStatusBadge(statusCalculado)
 
                   return (
                     <tr key={equipamento._id}>
