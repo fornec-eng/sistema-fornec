@@ -63,25 +63,51 @@ class UserService {
    */
   async associarObra(userId, obraId) {
     try {
+      console.log(`[userService] Associando obra ${obraId} ao usuário ${userId}`)
+
       // Primeiro, buscar as obras já permitidas
-      const obrasAtuais = await this.buscarObrasPermitidas(userId)
-      const obrasIds = obrasAtuais.obrasPermitidas || []
+      let obrasIds = []
+
+      try {
+        const obrasAtuais = await this.buscarObrasPermitidas(userId)
+        console.log('[userService] Obras atuais:', obrasAtuais)
+
+        // Extrair IDs das obras permitidas, considerando diferentes formatos de resposta
+        if (obrasAtuais.usuario && obrasAtuais.usuario.obrasPermitidas) {
+          obrasIds = obrasAtuais.usuario.obrasPermitidas.map(obra =>
+            typeof obra === 'object' ? obra._id : obra
+          )
+        } else if (obrasAtuais.obrasPermitidas) {
+          obrasIds = obrasAtuais.obrasPermitidas.map(obra =>
+            typeof obra === 'object' ? obra._id : obra
+          )
+        }
+      } catch (fetchError) {
+        console.warn('[userService] Usuário ainda não tem obras permitidas:', fetchError.message)
+        // Se não conseguir buscar, inicia com array vazio
+        obrasIds = []
+      }
+
+      console.log('[userService] IDs de obras atuais:', obrasIds)
 
       // Adicionar a nova obra se ainda não estiver na lista
       if (!obrasIds.includes(obraId)) {
         obrasIds.push(obraId)
+        console.log('[userService] Atualizando obras para:', obrasIds)
 
         // Atualizar a lista de obras permitidas
         const response = await ApiBase.put(`/user/${userId}/obras-permitidas`, {
           obrasIds: obrasIds
         })
+        console.log('[userService] Resposta da atualização:', response.data)
         return response.data
       }
 
       // Se já estiver na lista, retornar sucesso sem fazer nada
+      console.log('[userService] Obra já estava associada')
       return { success: true, message: "Obra já associada ao usuário" }
     } catch (error) {
-      console.error("Erro ao associar obra ao usuário:", error)
+      console.error("[userService] Erro ao associar obra ao usuário:", error)
       throw error
     }
   }
