@@ -192,55 +192,53 @@ const ObrasAtivas = () => {
           showAlert(response.message || "Erro ao atualizar obra.", "danger")
         }
       } else {
-        showAlert("Criando planilha no Google Sheets...", "info")
+        // PRIORIDADE: Criar a obra no banco de dados PRIMEIRO
+        showAlert("Criando obra no banco de dados...", "info")
 
-        const planilhaResponse = await GoogleSheetsService.criarPlanilhaObra(formData.nome, formData)
-
-        if (!planilhaResponse || !planilhaResponse.spreadsheetId) {
-          throw new Error("Erro ao criar planilha no Google Sheets")
-        }
-
-        showAlert("Planilha criada com sucesso! Criando obra...", "info")
-
-        const dadosObraComPlanilha = {
-          ...formData,
-          spreadsheetId: planilhaResponse.spreadsheetId,
-          spreadsheetUrl: planilhaResponse.url,
-        }
-
-        const response = await apiService.obras.create(dadosObraComPlanilha)
+        const response = await apiService.obras.create(formData)
 
         if (!response.error) {
+          const obraCriada = response.obra
+
           // Associar automaticamente a obra ao usuário que está criando
-          if (currentUserId && response.obra?._id) {
+          if (currentUserId && obraCriada?._id) {
             try {
-              console.log(`Associando obra ${response.obra._id} ao usuário ${currentUserId}`)
-              await userService.associarObra(currentUserId, response.obra._id)
-              showAlert(`Obra "${formData.nome}" criada, planilha associada e vinculada ao seu usuário!`, "success")
+              console.log(`Associando obra ${obraCriada._id} ao usuário ${currentUserId}`)
+              await userService.associarObra(currentUserId, obraCriada._id)
             } catch (associacaoError) {
               console.error("Erro ao associar obra ao usuário:", associacaoError)
-              showAlert(
-                `Obra "${formData.nome}" criada com sucesso, mas erro ao associar ao seu usuário. Você pode fazer isso manualmente.`,
-                "warning"
-              )
             }
-          } else {
-            showAlert(`Obra "${formData.nome}" criada com sucesso e planilha associada!`, "success")
           }
+
+          // OPCIONAL: Tentar criar planilha no Google Sheets
+          try {
+            showAlert("Obra criada! Criando planilha no Google Sheets...", "info")
+            const planilhaResponse = await GoogleSheetsService.criarPlanilhaObra(formData.nome, formData)
+
+            if (planilhaResponse?.spreadsheetId) {
+              // Atualizar a obra com os dados da planilha
+              await apiService.obras.update(obraCriada._id, {
+                spreadsheetId: planilhaResponse.spreadsheetId,
+                spreadsheetUrl: planilhaResponse.url,
+              })
+              showAlert(`Obra "${formData.nome}" criada com sucesso e planilha associada!`, "success")
+            } else {
+              showAlert(`Obra "${formData.nome}" criada com sucesso, mas não foi possível criar a planilha.`, "warning")
+            }
+          } catch (planilhaError) {
+            console.warn("Erro ao criar planilha, mas obra foi criada com sucesso:", planilhaError)
+            showAlert(`Obra "${formData.nome}" criada com sucesso, mas não foi possível criar a planilha.`, "warning")
+          }
+
           setShowModal(false)
           fetchObras()
         } else {
-          showAlert(`Planilha criada, mas erro ao salvar obra: ${response.message || "Erro desconhecido"}`, "warning")
+          showAlert(response.message || "Erro ao criar obra.", "danger")
         }
       }
     } catch (error) {
       console.error("Erro no fluxo de criação/edição da obra:", error)
-
-      if (error.message?.includes("planilha")) {
-        showAlert("Erro ao criar planilha no Google Sheets. Tente novamente.", "danger")
-      } else {
-        showAlert(error.response?.data?.msg || error.message || "Erro ao salvar obra. Tente novamente.", "danger")
-      }
+      showAlert(error.response?.data?.msg || error.message || "Erro ao salvar obra. Tente novamente.", "danger")
     } finally {
       setIsSubmitting(false)
     }

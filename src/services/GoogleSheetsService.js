@@ -86,6 +86,25 @@ class GoogleSheetsService {
    */
   async popularDadosIniciais(spreadsheetId, dadosObra) {
     try {
+      // Primeiro, buscar informações da planilha para descobrir os nomes das abas
+      let primeiraAba = "Sheet1" // Valor padrão
+
+      try {
+        const infoResponse = await ApiBase.get("/google/sheets/fullData", {
+          params: {
+            spreadsheetId,
+            includeData: "false"
+          }
+        })
+
+        if (infoResponse.data?.sheets && infoResponse.data.sheets.length > 0) {
+          primeiraAba = infoResponse.data.sheets[0].properties.title
+          console.log("Primeira aba encontrada:", primeiraAba)
+        }
+      } catch (infoError) {
+        console.warn("Não foi possível obter informações da planilha, usando 'Sheet1' como padrão:", infoError.message)
+      }
+
       const dadosParaInserir = [
         [
           "Nome",
@@ -111,11 +130,11 @@ class GoogleSheetsService {
 
       const updateData = {
         spreadsheetId,
-        range: "Sheet1!A1:H2", // Usar Sheet1 em vez de Resumo
+        range: `${primeiraAba}!A1:H2`,
         values: dadosParaInserir,
       }
 
-      // Atualizar dados na primeira aba (Sheet1)
+      // Atualizar dados na primeira aba
       await ApiBase.put("/google/sheets/update", updateData)
 
       // Criar aba de Cronograma
