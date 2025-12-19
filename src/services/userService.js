@@ -59,6 +59,34 @@ class UserService {
   }
 
   /**
+   * Associar uma nova obra ao usuário (adiciona à lista existente)
+   */
+  async associarObra(userId, obraId) {
+    try {
+      // Primeiro, buscar as obras já permitidas
+      const obrasAtuais = await this.buscarObrasPermitidas(userId)
+      const obrasIds = obrasAtuais.obrasPermitidas || []
+
+      // Adicionar a nova obra se ainda não estiver na lista
+      if (!obrasIds.includes(obraId)) {
+        obrasIds.push(obraId)
+
+        // Atualizar a lista de obras permitidas
+        const response = await ApiBase.put(`/user/${userId}/obras-permitidas`, {
+          obrasIds: obrasIds
+        })
+        return response.data
+      }
+
+      // Se já estiver na lista, retornar sucesso sem fazer nada
+      return { success: true, message: "Obra já associada ao usuário" }
+    } catch (error) {
+      console.error("Erro ao associar obra ao usuário:", error)
+      throw error
+    }
+  }
+
+  /**
    * Listar todos os usuários
    */
   async listarUsuarios(limit = 100) {
